@@ -1186,6 +1186,7 @@
             document.getElementById(name).classList.add('active');
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
             if (el) el.classList.add('active');
+            if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
 
             if (name === 'panel') {
                 if (getAuth()) {
@@ -1635,6 +1636,14 @@
                 toast('Failed to decode EXE: ' + err.message, 'error');
             }
         }
+
+        // ── Hash routing ──
+        function handleHash() {
+            const hash = location.hash.replace('#', '');
+            if (hash && document.getElementById(hash)) showPage(hash);
+        }
+        window.addEventListener('hashchange', handleHash);
+        handleHash();
     </script>
 </body>
 </html>
