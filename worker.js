@@ -50,14 +50,10 @@ export default {
     // --- Build upstream request ---
     const upstream = new URL(url.pathname + url.search, NFA_ORIGIN);
 
-    // DEBUG: dump env keys to see what is actually available
-    const envKeys = Object.keys(env).join(', ');
-    
     if (!env.NFA_API_KEY) {
       return new Response(JSON.stringify({ 
           status: 'error', 
-          message: 'Server configuration error: NFA_API_KEY is not set in Cloudflare',
-          debug_env_keys: envKeys 
+          message: 'Server configuration error: NFA_API_KEY is not set in Cloudflare'
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
