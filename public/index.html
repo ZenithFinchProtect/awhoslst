@@ -1235,7 +1235,9 @@
             status.className = `output-status ${isOk ? 'success' : 'error'}`;
             status.textContent = isOk ? 'SUCCESS' : 'ERROR';
 
-            body.textContent = JSON.stringify(data, null, 2);
+            body.textContent = (data && typeof data.message === 'string')
+                ? data.message
+                : JSON.stringify(data, null, 2);
         }
 
         // ── Button loading state ──
