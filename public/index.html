@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nordic Cheats — NFA Reseller Panel</title>
-    <meta name="description" content="NFA Reseller Panel — Manage downloads and key activations">
+    <title>Nordic Cheats — Download</title>
+    <meta name="description" content="Download your Nordic Cheats loader">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -665,7 +665,6 @@
             <div class="logo">Nordic Cheats</div>
             <ul class="nav-links">
                 <li class="nav-link active" onclick="showPage('home', this)">Home</li>
-                <li class="nav-link" onclick="showPage('panel', this)">Panel</li>
             </ul>
         </nav>
 
@@ -674,19 +673,14 @@
             <!-- ═══════════════ HOME ═══════════════ -->
             <div id="home" class="page active">
                 <div class="hero">
-                    <h1 class="hero-title">NFA Reseller Panel</h1>
-                    <p class="hero-sub">Manage downloads and key activations</p>
+                    <h1 class="hero-title">Nordic Cheats</h1>
+                    <p class="hero-sub">Download your loader below</p>
                 </div>
-                <div class="home-cards">
+                <div class="home-cards" style="grid-template-columns:1fr;max-width:500px;">
                     <div class="home-card" style="cursor:pointer;" onclick="openCustomerModal('download')">
                         <div class="home-card-title">Downloads</div>
-                        <div class="home-card-desc">Generate download links for products. Select product type, version, and platform to get instant access to downloads.</div>
+                        <div class="home-card-desc">Enter your activation key to download the loader. Re-downloads are free for valid keys.</div>
                         <button class="btn btn-primary" style="margin-top: 16px;">Download Loader →</button>
-                    </div>
-                    <div class="home-card" style="cursor:pointer;" onclick="openCustomerModal('activate')">
-                        <div class="home-card-title">Key Activations</div>
-                        <div class="home-card-desc">Activate license keys for customers. Manage activations and track license usage with email and machine ID support.</div>
-                        <button class="btn btn-secondary" style="margin-top: 16px;">Activate Key →</button>
                     </div>
                 </div>
 
@@ -716,9 +710,7 @@
                         </div>
                     </div>
                 </div>
-                <div style="text-align:center">
-                    <button class="hero-btn" onclick="showPage('panel', document.querySelectorAll('.nav-link')[1])">Access Panel</button>
-                </div>
+
             </div>
 
             <!-- ═══════════════ PANEL (all tabs) ═══════════════ -->
