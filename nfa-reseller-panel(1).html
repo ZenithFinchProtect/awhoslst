@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nordic Cheats — NFA Reseller Panel</title>
+    <meta name="description" content="NFA Reseller Panel — Manage accounts, activations, keys, and stock">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #060a10;
+            --bg-secondary: #0c1220;
+            --bg-card: #101829;
+            --bg-input: #0a0f1a;
+            --border: #1a2744;
+            --border-hover: #2a4070;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --accent-bright: #60a5fa;
+            --accent-dim: #2563eb;
+            --success: #22c55e;
+            --success-dim: rgba(34, 197, 94, 0.12);
+            --error: #ef4444;
+            --error-dim: rgba(239, 68, 68, 0.12);
+            --warning: #f59e0b;
+            --warning-dim: rgba(245, 158, 11, 0.12);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --radius: 10px;
+            --radius-sm: 6px;
+            --shadow: 0 4px 24px rgba(0,0,0,0.4);
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Ambient background glow */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -200px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 900px;
+            height: 500px;
+            background: radial-gradient(ellipse, rgba(59,130,246,0.06) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .app { position: relative; z-index: 1; }
+
+        /* ── Navigation ── */
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 32px;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            background: rgba(6, 10, 16, 0.85);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, var(--accent-bright), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 4px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .nav-link {
+            padding: 8px 18px;
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: var(--transition);
+            user-select: none;
+        }
+
+        .nav-link:hover { color: var(--text-primary); background: rgba(59,130,246,0.08); }
+        .nav-link.active { color: #fff; background: var(--accent); }
+
+        .auth-area {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .auth-input {
+            padding: 8px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            width: 200px;
+            transition: var(--transition);
+        }
+
+        .auth-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .auth-input::placeholder { color: var(--text-muted); }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: var(--transition);
+        }
+
+        .status-dot.connected { background: var(--success); box-shadow: 0 0 8px rgba(34,197,94,0.5); }
+        .status-dot.error { background: var(--error); box-shadow: 0 0 8px rgba(239,68,68,0.5); }
+
+        /* ── Layout ── */
+        .container { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
+
+        .page { display: none; animation: fadeIn 0.3s ease; }
+        .page.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            transition: var(--transition);
+        }
+
+        .card:hover { border-color: var(--border-hover); }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title .icon {
+            font-size: 18px;
+        }
+
+        .card-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-live { background: var(--success-dim); color: var(--success); }
+        .badge-post { background: rgba(59,130,246,0.12); color: var(--accent-bright); }
+        .badge-get { background: rgba(34,197,94,0.12); color: var(--success); }
+        .badge-delete { background: var(--error-dim); color: var(--error); }
+
+        /* ── Grid layouts ── */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+        .full-width { grid-column: 1 / -1; }
+
+        /* ── Stat cards ── */
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            transition: var(--transition);
+        }
+
+        .stat-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-value.positive { color: var(--success); }
+        .stat-value.negative { color: var(--error); }
+        .stat-value.warning { color: var(--warning); }
+
+        /* ── Forms ── */
+        .form-group { margin-bottom: 16px; }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .form-input::placeholder { color: var(--text-muted); }
+
+        .form-select {
+            appearance: none;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+
+        .form-select option { background: var(--bg-secondary); color: var(--text-primary); }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--accent-dim); transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--border-hover); color: var(--text-primary); }
+
+        .btn-danger {
+            background: rgba(239,68,68,0.12);
+            color: var(--error);
+            border: 1px solid rgba(239,68,68,0.2);
+        }
+        .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+        .btn-success {
+            background: rgba(34,197,94,0.12);
+            color: var(--success);
+            border: 1px solid rgba(34,197,94,0.2);
+        }
+        .btn-success:hover { background: rgba(34,197,94,0.2); }
+
+        .btn-group { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: none;
+        }
+
+        .btn.loading .spinner { display: inline-block; }
+        .btn.loading .btn-text { opacity: 0.7; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Output / Response ── */
+        .output {
+            margin-top: 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            display: none;
+        }
+
+        .output.show { display: block; animation: slideDown 0.25s ease; }
+
+        @keyframes slideDown {
+            from { opacity: 0; max-height: 0; }
+            to { opacity: 1; max-height: 600px; }
+        }
+
+        .output-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .output-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .output-status {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .output-status.success { background: var(--success-dim); color: var(--success); }
+        .output-status.error { background: var(--error-dim); color: var(--error); }
+
+        .output-body {
+            padding: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .output-body::-webkit-scrollbar { width: 4px; }
+        .output-body::-webkit-scrollbar-track { background: transparent; }
+        .output-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* ── Tables ── */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .data-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(26,39,68,0.5);
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+
+        .data-table tr:hover td { background: rgba(59,130,246,0.03); }
+        .data-table tr:last-child td { border-bottom: none; }
+
+        /* ── Home page ── */
+        .hero {
+            text-align: center;
+            padding: 80px 20px 40px;
+        }
+
+        .hero-title {
+            font-size: 52px;
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            background: linear-gradient(135deg, #e2e8f0, var(--accent-bright));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+        }
+
+        .hero-sub {
+            font-size: 18px;
+            color: var(--text-muted);
+            max-width: 500px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+
+        .hero-btn {
+            padding: 14px 36px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .hero-btn:hover { background: var(--accent-dim); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.25); }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 60px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            transition: var(--transition);
+        }
+
+        .feature-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+        .feature-icon { font-size: 28px; margin-bottom: 14px; }
+
+        .feature-name {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .feature-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* ── Toast ── */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toast {
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: var(--shadow);
+            animation: toastIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 380px;
+        }
+
+        .toast.success { background: #0d2818; border: 1px solid rgba(34,197,94,0.3); color: var(--success); }
+        .toast.error { background: #2d0a0a; border: 1px solid rgba(239,68,68,0.3); color: var(--error); }
+        .toast.info { background: #0c1a2e; border: 1px solid rgba(59,130,246,0.3); color: var(--accent-bright); }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .navbar { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+            .nav-links { order: 3; width: 100%; justify-content: center; }
+            .container { padding: 16px; }
+            .hero-title { font-size: 32px; }
+            .auth-input { width: 140px; }
+        }
+
+        /* ── Section header ── */
+        .section-header {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .section-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center;
+            padding: 32px 0;
+            margin-top: 60px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        /* ── Copy button ── */
+        .copy-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .copy-btn:hover { border-color: var(--accent); color: var(--accent-bright); }
+
+        /* ── Key list ── */
+        .key-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .key-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-input);
+            border-radius: var(--radius-sm);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .key-item:hover { background: rgba(59,130,246,0.06); }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Toasts -->
+        <div class="toast-container" id="toastContainer"></div>
+
+        <!-- Nav -->
+        <nav class="navbar">
+            <div class="logo">Nordic Cheats</div>
+            <ul class="nav-links">
+                <li class="nav-link active" onclick="showPage('home', this)">Home</li>
+                <li class="nav-link" onclick="showPage('dashboard', this)">Dashboard</li>
+                <li class="nav-link" onclick="showPage('activate', this)">Activate</li>
+                <li class="nav-link" onclick="showPage('keys', this)">Keys</li>
+                <li class="nav-link" onclick="showPage('tools', this)">Tools</li>
+            </ul>
+            <div class="auth-area">
+                <div class="status-dot" id="statusDot" title="Not connected"></div>
+                <input type="password" class="auth-input" id="panelAuth" placeholder="Panel password" autocomplete="off">
+            </div>
+        </nav>
+
+        <div class="container">
+
+            <!-- ═══════════════ HOME ═══════════════ -->
+            <div id="home" class="page active">
+                <div class="hero">
+                    <h1 class="hero-title">NFA Reseller Panel</h1>
+                    <p class="hero-sub">Manage accounts, activations, keys, and stock — all in one place. Secured by server-side proxy.</p>
+                    <button class="hero-btn" onclick="showPage('dashboard', document.querySelectorAll('.nav-link')[1])">Open Dashboard →</button>
+                </div>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔐</div>
+                        <div class="feature-name">Secure Proxy</div>
+                        <div class="feature-desc">API key never leaves the server. All requests proxied through Cloudflare Worker with encrypted secrets.</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <div class="feature-name">Full API Access</div>
+                        <div class="feature-desc">All NFA endpoints — activate, create keys, check accounts, manage stock, download EXEs, and more.</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <div class="feature-name">Live Dashboard</div>
+                        <div class="feature-desc">Real-time balance, stock counts, Steam status, and system health at a glance.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ DASHBOARD ═══════════════ -->
+            <div id="dashboard" class="page">
+                <div class="section-header">
+                    <h2 class="section-title">Dashboard</h2>
+                    <p class="section-desc">System status, balance, and live stock</p>
+                </div>
+
+                <!-- Stats row -->
+                <div class="grid-4" id="statsRow">
+                    <div class="stat-card">
+                        <div class="stat-label">Balance</div>
+                        <div class="stat-value" id="statBalance">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">API Status</div>
+                        <div class="stat-value" id="statApi">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Steam</div>
+                        <div class="stat-value" id="statSteam">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Tech Works</div>
+                        <div class="stat-value" id="statTechWorks">—</div>
+                    </div>
+                </div>
+
+                <div class="btn-group" style="margin-bottom:20px">
+                    <button class="btn btn-primary" onclick="loadDashboard()">
+                        <span class="spinner"></span>
+                        <span class="btn-text">↻ Refresh Status</span>
+                    </button>
+                </div>
+
+                <!-- Accounts + Stock -->
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📦</span> Account Types</div>
+                            <span class="card-badge badge-get">GET</span>
+                        </div>
+                        <div id="accountsTable">
+                            <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📈</span> Live Stock</div>
+                            <span class="card-badge badge-live">LIVE</span>
+                        </div>
+                        <div id="stockTable">
+                            <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Usage -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📊</span> API Usage (This Minute)</div>
+                    </div>
+                    <div id="usageTable">
+                        <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ ACTIVATE ═══════════════ -->
+            <div id="activate" class="page">
+                <div class="section-header">
+                    <h2 class="section-title">Activation</h2>
+                    <p class="section-desc">Activate keys or accounts directly</p>
+                </div>
+
+                <div class="grid-2">
+                    <!-- Activate with Key -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔑</span> Activate Key</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Activate an existing key. Timeout: 120s.</p>
+                        <div class="form-group">
+                            <label class="form-label">Activation Key</label>
+                            <input type="text" class="form-input" id="activateKeyInput" placeholder="Enter activation key">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="activateKeyBtn" onclick="activateKey()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Activate</span>
+                            </button>
+                        </div>
+                        <div class="output" id="activateKeyOutput">
+                            <div class="output-header">
+                                <span class="output-title">Response</span>
+                                <span class="output-status" id="activateKeyStatus"></span>
+                            </div>
+                            <div class="output-body" id="activateKeyBody"></div>
+                        </div>
+                    </div>
+
+                    <!-- Activate Direct -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">⚡</span> Activate Direct</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Create key + activate in one call. Timeout: 120s.</p>
+                        <div class="form-group">
+                            <label class="form-label">Account Type</label>
+                            <select class="form-select" id="activateDirectType">
+                                <option value="">Select account type...</option>
+                            </select>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="activateDirectBtn" onclick="activateDirect()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Activate Direct</span>
+                            </button>
+                        </div>
+                        <div class="output" id="activateDirectOutput">
+                            <div class="output-header">
+                                <span class="output-title">Response</span>
+                                <span class="output-status" id="activateDirectStatus"></span>
+                            </div>
+                            <div class="output-body" id="activateDirectBody"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ KEYS ═══════════════ -->
+            <div id="keys" class="page">
+                <div class="section-header">
+                    <h2 class="section-title">Key Management</h2>
+                    <p class="section-desc">Create, lookup, and manage activation keys</p>
+                </div>
+
+                <div class="grid-2">
+                    <!-- Create Keys -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">✨</span> Create Keys</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Account Type</label>
+                            <select class="form-select" id="createKeysType">
+                                <option value="">Select account type...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Amount (1-500)</label>
+                            <input type="number" class="form-input" id="createKeysAmount" min="1" max="500" value="1">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="createKeysBtn" onclick="createKeys()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Create Keys</span>
+                            </button>
+                        </div>
+                        <div class="output" id="createKeysOutput">
+                            <div class="output-header">
+                                <span class="output-title">Created Keys</span>
+                                <span class="output-status" id="createKeysStatus"></span>
+                            </div>
+                            <div class="output-body" id="createKeysBody"></div>
+                        </div>
+                    </div>
+
+                    <!-- Key Details -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔍</span> Key Details</div>
+                            <span class="card-badge badge-get">GET</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Activation Key</label>
+                            <input type="text" class="form-input" id="keyDetailsInput" placeholder="Enter activation key">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="keyDetailsBtn" onclick="getKeyDetails()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Lookup</span>
+                            </button>
+                        </div>
+                        <div class="output" id="keyDetailsOutput">
+                            <div class="output-header">
+                                <span class="output-title">Key Info</span>
+                                <span class="output-status" id="keyDetailsStatus"></span>
+                            </div>
+                            <div class="output-body" id="keyDetailsBody"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <!-- History Keys -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📜</span> Activation History</div>
+                            <span class="card-badge badge-get">GET</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Amount (1-100)</label>
+                            <input type="number" class="form-input" id="historyAmount" min="1" max="100" value="20">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="historyBtn" onclick="getHistory()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Load History</span>
+                            </button>
+                        </div>
+                        <div class="output" id="historyOutput">
+                            <div class="output-header">
+                                <span class="output-title">Recent Activations</span>
+                                <span class="output-status" id="historyStatus"></span>
+                            </div>
+                            <div class="output-body" id="historyBody"></div>
+                        </div>
+                    </div>
+
+                    <!-- Unactivated Keys -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📋</span> Unactivated Keys</div>
+                            <span class="card-badge badge-get">GET</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Account Type</label>
+                            <select class="form-select" id="unactivatedType">
+                                <option value="">Select account type...</option>
+                            </select>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="unactivatedBtn" onclick="getUnactivated()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Load Keys</span>
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteAllUnactivated()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Delete All</span>
+                            </button>
+                        </div>
+                        <div class="output" id="unactivatedOutput">
+                            <div class="output-header">
+                                <span class="output-title">Keys</span>
+                                <span class="output-status" id="unactivatedStatus"></span>
+                            </div>
+                            <div class="output-body" id="unactivatedBody"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════ TOOLS ═══════════════ -->
+            <div id="tools" class="page">
+                <div class="section-header">
+                    <h2 class="section-title">Tools</h2>
+                    <p class="section-desc">Check accounts, create EXEs, and test endpoints</p>
+                </div>
+
+                <div class="grid-2">
+                    <!-- Check Account -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">✅</span> Check Account</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Re-validate an activated account. Returns valid / replaced / invalid.</p>
+                        <div class="form-group">
+                            <label class="form-label">Activation Key</label>
+                            <input type="text" class="form-input" id="checkAccountKey" placeholder="Enter activation key">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="checkAccountBtn" onclick="checkAccount()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Check</span>
+                            </button>
+                        </div>
+                        <div class="output" id="checkAccountOutput">
+                            <div class="output-header">
+                                <span class="output-title">Result</span>
+                                <span class="output-status" id="checkAccountStatus"></span>
+                            </div>
+                            <div class="output-body" id="checkAccountBody"></div>
+                        </div>
+                    </div>
+
+                    <!-- Create EXE -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">💾</span> Create EXE</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Rebuild the .exe for a previously activated key.</p>
+                        <div class="form-group">
+                            <label class="form-label">Activation Key</label>
+                            <input type="text" class="form-input" id="createExeKey" placeholder="Enter activation key">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="createExeBtn" onclick="createExe()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Create EXE</span>
+                            </button>
+                        </div>
+                        <div class="output" id="createExeOutput">
+                            <div class="output-header">
+                                <span class="output-title">Result</span>
+                                <span class="output-status" id="createExeStatus"></span>
+                            </div>
+                            <div class="output-body" id="createExeBody"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Test Endpoints -->
+                <div class="card" style="margin-top: 20px">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">🧪</span> Test Endpoints</div>
+                        <span class="card-badge badge-post">TEST</span>
+                    </div>
+                    <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Test activations without consuming real stock.</p>
+                    <div class="btn-group">
+                        <button class="btn btn-secondary" onclick="testActivate()">Test Activate</button>
+                        <button class="btn btn-secondary" onclick="testActivateDirect()">Test Activate Direct</button>
+                        <button class="btn btn-secondary" onclick="testGame('test_cs2')">Test CS2</button>
+                        <button class="btn btn-secondary" onclick="testGame('test_rust')">Test Rust</button>
+                        <button class="btn btn-secondary" onclick="testGame('test_other')">Test Other</button>
+                    </div>
+                    <div class="output" id="testOutput">
+                        <div class="output-header">
+                            <span class="output-title">Test Response</span>
+                            <span class="output-status" id="testStatus"></span>
+                        </div>
+                        <div class="output-body" id="testBody"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <footer>Nordic Cheats 2026 · NFA Reseller Panel v2.0 · Secured by Cloudflare Worker Proxy</footer>
+    </div>
+
+    <script>
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CONFIG — change this to your deployed Cloudflare Worker URL
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        const WORKER_URL = 'https://nfa-reseller-proxy.YOUR_SUBDOMAIN.workers.dev';
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // Cache account types for dropdowns
+        let accountTypes = [];
+
+        // ── Auth ──
+        function getAuth() {
+            return document.getElementById('panelAuth').value.trim();
+        }
+
+        // Save / restore auth
+        document.getElementById('panelAuth').addEventListener('input', function() {
+            sessionStorage.setItem('nfa_panel_auth', this.value);
+        });
+        window.addEventListener('load', () => {
+            const saved = sessionStorage.getItem('nfa_panel_auth');
+            if (saved) document.getElementById('panelAuth').value = saved;
+        });
+
+        // ── API call helper ──
+        async function api(method, path, body = null, timeoutMs = 30000) {
+            const auth = getAuth();
+            const headers = { 'Content-Type': 'application/json' };
+            if (auth) headers['X-Panel-Auth'] = auth;
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+                const opts = { method, headers, signal: controller.signal };
+                if (body && ['POST', 'PUT', 'DELETE'].includes(method)) {
+                    opts.body = JSON.stringify(body);
+                }
+
+                const url = method === 'GET' && body
+                    ? `${WORKER_URL}${path}?${new URLSearchParams(body)}`
+                    : `${WORKER_URL}${path}`;
+
+                const res = await fetch(method === 'GET' && body ? url : `${WORKER_URL}${path}`, opts);
+                clearTimeout(timer);
+
+                const data = await res.json();
+
+                // Update connection indicator
+                const dot = document.getElementById('statusDot');
+                if (res.ok) {
+                    dot.className = 'status-dot connected';
+                    dot.title = 'Connected';
+                } else {
+                    dot.className = 'status-dot error';
+                    dot.title = `Error: ${res.status}`;
+                }
+
+                return { ok: res.ok, status: res.status, data };
+            } catch (err) {
+                clearTimeout(timer);
+                document.getElementById('statusDot').className = 'status-dot error';
+                throw err;
+            }
+        }
+
+        // GET with query params
+        async function apiGet(path, params = null, timeoutMs = 30000) {
+            const auth = getAuth();
+            const headers = { 'Content-Type': 'application/json' };
+            if (auth) headers['X-Panel-Auth'] = auth;
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+                let url = `${WORKER_URL}${path}`;
+                if (params) url += '?' + new URLSearchParams(params);
+
+                const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+                clearTimeout(timer);
+                const data = await res.json();
+
+                const dot = document.getElementById('statusDot');
+                if (res.ok) {
+                    dot.className = 'status-dot connected';
+                    dot.title = 'Connected';
+                } else {
+                    dot.className = 'status-dot error';
+                    dot.title = `Error: ${res.status}`;
+                }
+
+                return { ok: res.ok, status: res.status, data };
+            } catch (err) {
+                clearTimeout(timer);
+                document.getElementById('statusDot').className = 'status-dot error';
+                throw err;
+            }
+        }
+
+        // ── Toast notifications ──
+        function toast(msg, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const el = document.createElement('div');
+            el.className = `toast ${type}`;
+            el.textContent = msg;
+            container.appendChild(el);
+            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 4000);
+        }
+
+        // ── Navigation ──
+        function showPage(name, el) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(name).classList.add('active');
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            if (el) el.classList.add('active');
+
+            // Auto-load dashboard data
+            if (name === 'dashboard') loadDashboard();
+            // Auto-populate dropdowns
+            if (name === 'activate' || name === 'keys') populateDropdowns();
+        }
+
+        // ── Show response in output panel ──
+        function showOutput(prefix, data, isOk) {
+            const output = document.getElementById(`${prefix}Output`);
+            const status = document.getElementById(`${prefix}Status`);
+            const body = document.getElementById(`${prefix}Body`);
+
+            output.classList.add('show');
+            status.className = `output-status ${isOk ? 'success' : 'error'}`;
+            status.textContent = isOk ? 'SUCCESS' : 'ERROR';
+
+            // Format JSON with nice indentation
+            body.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // ── Button loading state ──
+        function setLoading(btnId, loading) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.disabled = loading;
+            btn.classList.toggle('loading', loading);
+        }
+
+        // ── Populate account type dropdowns ──
+        async function populateDropdowns() {
+            if (accountTypes.length > 0) return; // already loaded
+            try {
+                const r = await apiGet('/api/v1/accounts');
+                if (r.ok && r.data.accounts) {
+                    accountTypes = Object.keys(r.data.accounts);
+                    const selects = ['activateDirectType', 'createKeysType', 'unactivatedType'];
+                    selects.forEach(id => {
+                        const sel = document.getElementById(id);
+                        if (!sel) return;
+                        // Clear existing except first
+                        while (sel.options.length > 1) sel.remove(1);
+                        accountTypes.forEach(t => {
+                            const opt = document.createElement('option');
+                            opt.value = t;
+                            opt.textContent = t;
+                            sel.appendChild(opt);
+                        });
+                    });
+                }
+            } catch (e) {
+                // silent — dropdowns just stay empty
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  DASHBOARD
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function loadDashboard() {
+            try {
+                // Parallel requests
+                const [statusRes, accountsRes, stockRes] = await Promise.all([
+                    apiGet('/api/v1/status'),
+                    apiGet('/api/v1/accounts'),
+                    apiGet('/api/v1/stock'),
+                ]);
+
+                // Status
+                if (statusRes.ok) {
+                    const d = statusRes.data;
+                    document.getElementById('statBalance').textContent = `$${d.balance?.toFixed(2) || '0.00'}`;
+                    document.getElementById('statBalance').className = 'stat-value positive';
+
+                    const apiEl = document.getElementById('statApi');
+                    apiEl.textContent = d.api_active ? 'Active' : 'Inactive';
+                    apiEl.className = `stat-value ${d.api_active ? 'positive' : 'negative'}`;
+
+                    const steamEl = document.getElementById('statSteam');
+                    steamEl.textContent = d.steam_down ? 'DOWN' : 'Online';
+                    steamEl.className = `stat-value ${d.steam_down ? 'negative' : 'positive'}`;
+
+                    const twEl = document.getElementById('statTechWorks');
+                    twEl.textContent = d.technical_works ? 'YES' : 'No';
+                    twEl.className = `stat-value ${d.technical_works ? 'warning' : 'positive'}`;
+
+                    // Usage table
+                    if (d.usage) {
+                        let html = '<table class="data-table"><tr><th>Endpoint</th><th>Used</th><th>Limit</th></tr>';
+                        Object.entries(d.usage).forEach(([endpoint, info]) => {
+                            const used = typeof info === 'object' ? (info.used || info.count || 0) : info;
+                            const limit = typeof info === 'object' ? (info.limit || '—') : '—';
+                            html += `<tr><td>${endpoint}</td><td>${used}</td><td>${limit}</td></tr>`;
+                        });
+                        html += '</table>';
+                        document.getElementById('usageTable').innerHTML = html;
+                    }
+                }
+
+                // Accounts
+                if (accountsRes.ok && accountsRes.data.accounts) {
+                    accountTypes = Object.keys(accountsRes.data.accounts);
+                    let html = '<table class="data-table"><tr><th>Account Type</th><th>Sell Price</th></tr>';
+                    Object.entries(accountsRes.data.accounts).forEach(([name, price]) => {
+                        html += `<tr><td>${name}</td><td style="color:var(--success)">$${price}</td></tr>`;
+                    });
+                    html += '</table>';
+                    document.getElementById('accountsTable').innerHTML = html;
+                }
+
+                // Stock
+                if (stockRes.ok && stockRes.data.stock) {
+                    let html = '<table class="data-table"><tr><th>Account Type</th><th>In Stock</th></tr>';
+                    Object.entries(stockRes.data.stock).forEach(([name, count]) => {
+                        const color = count > 0 ? 'var(--success)' : 'var(--error)';
+                        html += `<tr><td>${name}</td><td style="color:${color};font-weight:600">${count}</td></tr>`;
+                    });
+                    html += '</table>';
+                    document.getElementById('stockTable').innerHTML = html;
+                }
+
+                toast('Dashboard loaded', 'success');
+            } catch (err) {
+                toast('Failed to load dashboard: ' + err.message, 'error');
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  ACTIVATE KEY
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function activateKey() {
+            const key = document.getElementById('activateKeyInput').value.trim();
+            if (!key) return toast('Enter an activation key', 'error');
+
+            setLoading('activateKeyBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
+                showOutput('activateKey', r.data, r.ok);
+
+                if (r.ok && r.data.exe_base64) {
+                    downloadExe(r.data.exe_base64, r.data.exe_filename);
+                    toast('Key activated + EXE downloaded', 'success');
+                } else if (r.ok) {
+                    toast('Key activated', 'success');
+                } else {
+                    toast(r.data.message || 'Activation failed', 'error');
+                }
+            } catch (err) {
+                toast('Activation error: ' + err.message, 'error');
+            }
+            setLoading('activateKeyBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  ACTIVATE DIRECT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function activateDirect() {
+            const type = document.getElementById('activateDirectType').value;
+            if (!type) return toast('Select an account type', 'error');
+
+            setLoading('activateDirectBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/activate_direct', { account_type: type }, 130000);
+                showOutput('activateDirect', r.data, r.ok);
+
+                if (r.ok && r.data.exe_base64) {
+                    downloadExe(r.data.exe_base64, r.data.exe_filename);
+                    toast('Direct activation + EXE downloaded', 'success');
+                } else if (r.ok) {
+                    toast('Direct activation successful', 'success');
+                } else {
+                    toast(r.data.message || 'Activation failed', 'error');
+                }
+            } catch (err) {
+                toast('Activation error: ' + err.message, 'error');
+            }
+            setLoading('activateDirectBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CREATE KEYS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function createKeys() {
+            const type = document.getElementById('createKeysType').value;
+            const amount = parseInt(document.getElementById('createKeysAmount').value) || 1;
+            if (!type) return toast('Select an account type', 'error');
+
+            setLoading('createKeysBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/create_keys', { account_type: type, amount });
+                showOutput('createKeys', r.data, r.ok);
+                toast(r.ok ? `Created ${r.data.keys?.length || 0} keys` : (r.data.message || 'Failed'), r.ok ? 'success' : 'error');
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('createKeysBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  KEY DETAILS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function getKeyDetails() {
+            const key = document.getElementById('keyDetailsInput').value.trim();
+            if (!key) return toast('Enter an activation key', 'error');
+
+            setLoading('keyDetailsBtn', true);
+            try {
+                const r = await apiGet('/api/v1/key_details', { activation_key: key });
+                showOutput('keyDetails', r.data, r.ok);
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('keyDetailsBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  HISTORY
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function getHistory() {
+            const amount = parseInt(document.getElementById('historyAmount').value) || 20;
+
+            setLoading('historyBtn', true);
+            try {
+                const r = await apiGet('/api/v1/history_keys', { amount });
+                showOutput('history', r.data, r.ok);
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('historyBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  UNACTIVATED KEYS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function getUnactivated() {
+            const type = document.getElementById('unactivatedType').value;
+            if (!type) return toast('Select an account type', 'error');
+
+            setLoading('unactivatedBtn', true);
+            try {
+                const r = await apiGet('/api/v1/unactivated_keys', { account_type: type });
+                showOutput('unactivated', r.data, r.ok);
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('unactivatedBtn', false);
+        }
+
+        async function deleteAllUnactivated() {
+            const type = document.getElementById('unactivatedType').value;
+            if (!type) return toast('Select an account type first', 'error');
+            if (!confirm(`Delete ALL unactivated keys for "${type}"? This cannot be undone.`)) return;
+
+            try {
+                const auth = getAuth();
+                const headers = { 'Content-Type': 'application/json' };
+                if (auth) headers['X-Panel-Auth'] = auth;
+
+                const url = `${WORKER_URL}/api/v1/unactivated_keys/all?account_type=${encodeURIComponent(type)}`;
+                const res = await fetch(url, { method: 'DELETE', headers });
+                const data = await res.json();
+                showOutput('unactivated', data, res.ok);
+                toast(res.ok ? 'All unactivated keys deleted' : (data.message || 'Failed'), res.ok ? 'success' : 'error');
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CHECK ACCOUNT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function checkAccount() {
+            const key = document.getElementById('checkAccountKey').value.trim();
+            if (!key) return toast('Enter an activation key', 'error');
+
+            setLoading('checkAccountBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/check_account', { activation_key: key });
+                showOutput('checkAccount', r.data, r.ok);
+
+                if (r.ok) {
+                    const result = r.data.result;
+                    if (result === 'valid') toast('Account is VALID', 'success');
+                    else if (result === 'replaced') toast('Account REPLACED — check replacement_key', 'info');
+                    else toast('Account INVALID — contact support', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('checkAccountBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CREATE EXE
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function createExe() {
+            const key = document.getElementById('createExeKey').value.trim();
+            if (!key) return toast('Enter an activation key', 'error');
+
+            setLoading('createExeBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
+
+                // Don't show base64 blob in output — too big
+                const display = { ...r.data };
+                if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
+                showOutput('createExe', display, r.ok);
+
+                if (r.ok && r.data.exe_base64) {
+                    downloadExe(r.data.exe_base64, r.data.exe_filename);
+                    toast('EXE downloaded: ' + r.data.exe_filename, 'success');
+                } else if (!r.ok) {
+                    toast(r.data.message || 'Failed to create EXE', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('createExeBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  TEST ENDPOINTS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function testActivate() {
+            try {
+                const r = await api('POST', '/api/v1/test/activate', {});
+                const display = { ...r.data };
+                if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars]`;
+                showOutput('test', display, r.ok);
+            } catch (err) { toast('Error: ' + err.message, 'error'); }
+        }
+
+        async function testActivateDirect() {
+            try {
+                const r = await api('POST', '/api/v1/test/activate_direct', {});
+                const display = { ...r.data };
+                if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars]`;
+                showOutput('test', display, r.ok);
+            } catch (err) { toast('Error: ' + err.message, 'error'); }
+        }
+
+        async function testGame(endpoint) {
+            try {
+                const r = await api('POST', `/api/v1/${endpoint}`, null);
+                const display = { ...r.data };
+                if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars]`;
+                showOutput('test', display, r.ok);
+            } catch (err) { toast('Error: ' + err.message, 'error'); }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  EXE DOWNLOAD HELPER
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        function downloadExe(base64, filename) {
+            try {
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+                const blob = new Blob([bytes], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename || 'loader.exe';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                toast('Failed to decode EXE: ' + err.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
