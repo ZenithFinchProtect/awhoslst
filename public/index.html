@@ -603,6 +603,20 @@
 
         .key-item:hover { background: rgba(0,191,255,0.06); }
 
+        .key-code { word-break: break-all; margin-right: 10px; }
+
+        /* When the output body shows a key list, drop the pre-wrap text styling */
+        .output-body.keys-output { white-space: normal; word-break: normal; }
+
+        .key-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
         /* ── Login Gate ── */
         .login-gate {
             display: flex;
@@ -1228,9 +1242,83 @@
             status.className = `output-status ${isOk ? 'success' : 'error'}`;
             status.textContent = isOk ? 'SUCCESS' : 'ERROR';
 
+            // When the response carries a list of keys, render them as a
+            // copyable list so generated/looked-up keys are actually visible.
+            if (isOk && data && Array.isArray(data.keys) && data.keys.length) {
+                renderKeyList(body, data.keys, data.message);
+                return;
+            }
+
+            body.classList.remove('keys-output');
             body.textContent = (data && typeof data.message === 'string')
                 ? data.message
                 : JSON.stringify(data, null, 2);
+        }
+
+        // ── Extract the printable key string from an item ──
+        function keyString(item) {
+            if (typeof item === 'string') return item;
+            if (item && typeof item === 'object') {
+                return item.key || item.activation_key || item.activationKey || JSON.stringify(item);
+            }
+            return String(item);
+        }
+
+        // ── Copy text to clipboard with button feedback ──
+        function copyToClipboard(text, btn) {
+            const done = () => {
+                if (!btn) return;
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = orig; }, 1200);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(() => toast('Copy failed', 'error'));
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); } catch (e) { toast('Copy failed', 'error'); }
+                document.body.removeChild(ta);
+            }
+        }
+
+        // ── Render a list of keys with copy buttons ──
+        function renderKeyList(body, keys, message) {
+            const strings = keys.map(keyString);
+            body.classList.add('keys-output');
+            body.textContent = '';
+
+            const header = document.createElement('div');
+            header.className = 'key-list-header';
+            const label = document.createElement('span');
+            label.textContent = message || `${strings.length} key${strings.length === 1 ? '' : 's'}`;
+            const copyAll = document.createElement('button');
+            copyAll.className = 'copy-btn';
+            copyAll.textContent = 'Copy all';
+            copyAll.onclick = () => copyToClipboard(strings.join('\n'), copyAll);
+            header.appendChild(label);
+            header.appendChild(copyAll);
+            body.appendChild(header);
+
+            const list = document.createElement('div');
+            list.className = 'key-list';
+            strings.forEach(k => {
+                const item = document.createElement('div');
+                item.className = 'key-item';
+                const code = document.createElement('span');
+                code.className = 'key-code';
+                code.textContent = k;
+                const btn = document.createElement('button');
+                btn.className = 'copy-btn';
+                btn.textContent = 'Copy';
+                btn.onclick = () => copyToClipboard(k, btn);
+                item.appendChild(code);
+                item.appendChild(btn);
+                list.appendChild(item);
+            });
+            body.appendChild(list);
         }
 
         // ── Button loading state ──
