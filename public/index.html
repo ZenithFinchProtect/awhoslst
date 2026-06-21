@@ -617,6 +617,46 @@
             color: var(--text-secondary);
         }
 
+        /* ── Keys table view ── */
+        .keys-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .keys-filters .form-input,
+        .keys-filters .form-select { width: auto; }
+        .keys-filters #keysSearch { flex: 1 1 220px; min-width: 200px; }
+        .keys-date-range { display: flex; align-items: center; gap: 6px; }
+        .keys-date-range .form-label { margin: 0; font-size: 11px; }
+        .keys-date-range .form-input { width: auto; }
+
+        .keys-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .keys-count { font-size: 12px; color: var(--text-muted); }
+
+        .keys-table-wrap { max-height: 460px; overflow: auto; }
+        .keys-table th { cursor: pointer; user-select: none; white-space: nowrap; }
+        .keys-table td.key-code { word-break: break-all; }
+        .keys-empty { text-align: center; color: var(--text-muted); padding: 24px 0; font-family: inherit; }
+
+        .status-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 999px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .status-activated { background: var(--success-dim); color: var(--success); }
+        .status-unactivated { background: var(--warning-dim); color: var(--warning); }
+
         /* ── Login Gate ── */
         .login-gate {
             display: flex;
@@ -881,119 +921,56 @@
                 <!-- Keys -->
                 <div id="panelKeys" class="panel-section" style="display:none">
                     <div class="section-header">
-                        <h2 class="section-title">Key Management</h2>
-                        <p class="section-desc">Create, lookup, and manage activation keys</p>
+                        <h2 class="section-title">Keys</h2>
+                        <p class="section-desc">All activation keys — filter, sort, and copy</p>
                     </div>
 
-                    <div class="grid-2">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">✨</span> Create Keys</div>
-                                <span class="card-badge badge-post">POST</span>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Account Type</label>
-                                <select class="form-select" id="createKeysType">
-                                    <option value="">Select account type...</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Amount (1-500)</label>
-                                <input type="number" class="form-input" id="createKeysAmount" min="1" max="500" value="1">
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn btn-primary" id="createKeysBtn" onclick="createKeys()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">Create Keys</span>
-                                </button>
-                            </div>
-                            <div class="output" id="createKeysOutput">
-                                <div class="output-header">
-                                    <span class="output-title">Created Keys</span>
-                                    <span class="output-status" id="createKeysStatus"></span>
-                                </div>
-                                <div class="output-body" id="createKeysBody"></div>
-                            </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔑</span> All Keys</div>
+                            <button class="btn btn-primary" id="keysRefreshBtn" onclick="loadAllKeys()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">↻ Refresh</span>
+                            </button>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">🔍</span> Key Details</div>
-                                <span class="card-badge badge-get">GET</span>
+                        <div class="keys-filters">
+                            <input type="text" class="form-input" id="keysSearch" placeholder="Search key or account type..." oninput="renderKeysTable()">
+                            <select class="form-select" id="keysTypeFilter" onchange="renderKeysTable()">
+                                <option value="">All account types</option>
+                            </select>
+                            <select class="form-select" id="keysStatusFilter" onchange="renderKeysTable()">
+                                <option value="">All statuses</option>
+                                <option value="activated">Activated</option>
+                                <option value="unactivated">Unactivated</option>
+                            </select>
+                            <div class="keys-date-range">
+                                <label class="form-label">From</label>
+                                <input type="date" class="form-input" id="keysDateFrom" onchange="renderKeysTable()">
+                                <label class="form-label">To</label>
+                                <input type="date" class="form-input" id="keysDateTo" onchange="renderKeysTable()">
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Activation Key</label>
-                                <input type="text" class="form-input" id="keyDetailsInput" placeholder="Enter activation key">
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn btn-primary" id="keyDetailsBtn" onclick="getKeyDetails()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">Lookup</span>
-                                </button>
-                            </div>
-                            <div class="output" id="keyDetailsOutput">
-                                <div class="output-header">
-                                    <span class="output-title">Key Info</span>
-                                    <span class="output-status" id="keyDetailsStatus"></span>
-                                </div>
-                                <div class="output-body" id="keyDetailsBody"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid-2">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📜</span> Activation History</div>
-                                <span class="card-badge badge-get">GET</span>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Amount (1-100)</label>
-                                <input type="number" class="form-input" id="historyAmount" min="1" max="100" value="20">
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn btn-primary" id="historyBtn" onclick="getHistory()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">Load History</span>
-                                </button>
-                            </div>
-                            <div class="output" id="historyOutput">
-                                <div class="output-header">
-                                    <span class="output-title">Recent Activations</span>
-                                    <span class="output-status" id="historyStatus"></span>
-                                </div>
-                                <div class="output-body" id="historyBody"></div>
-                            </div>
+                            <button class="btn btn-secondary" onclick="clearKeysFilters()">Clear</button>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📋</span> Unactivated Keys</div>
-                                <span class="card-badge badge-get">GET</span>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Account Type</label>
-                                <select class="form-select" id="unactivatedType">
-                                    <option value="">Select account type...</option>
-                                </select>
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn btn-primary" id="unactivatedBtn" onclick="getUnactivated()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">Load Keys</span>
-                                </button>
-                                <button class="btn btn-danger" onclick="deleteAllUnactivated()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">Delete All</span>
-                                </button>
-                            </div>
-                            <div class="output" id="unactivatedOutput">
-                                <div class="output-header">
-                                    <span class="output-title">Keys</span>
-                                    <span class="output-status" id="unactivatedStatus"></span>
-                                </div>
-                                <div class="output-body" id="unactivatedBody"></div>
-                            </div>
+                        <div class="keys-toolbar">
+                            <span id="keysCount" class="keys-count">No keys loaded</span>
+                            <button class="copy-btn" id="keysCopyAllBtn" onclick="copyFilteredKeys(this)">Copy all (filtered)</button>
+                        </div>
+
+                        <div class="keys-table-wrap">
+                            <table class="data-table keys-table" id="keysTable">
+                                <thead>
+                                    <tr>
+                                        <th data-sort="key" onclick="sortKeysBy('key')">Key</th>
+                                        <th data-sort="account_type" onclick="sortKeysBy('account_type')">Account Type</th>
+                                        <th data-sort="status" onclick="sortKeysBy('status')">Status</th>
+                                        <th data-sort="date" onclick="sortKeysBy('date')">Date</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="keysTableBody"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1228,8 +1205,9 @@
             el.style.background = 'var(--accent)';
             el.classList.add('active');
 
-            // Auto-populate dropdowns for activate/keys tabs
-            if (tabId === 'panelActivate' || tabId === 'panelKeys') populateDropdowns();
+            // Auto-populate dropdowns / load data for the opened tab
+            if (tabId === 'panelActivate') populateDropdowns();
+            if (tabId === 'panelKeys') loadAllKeys();
         }
 
         // ── Show response in output panel ──
@@ -1336,7 +1314,7 @@
                 const r = await apiGet('/api/v1/accounts');
                 if (r.ok && r.data.accounts) {
                     accountTypes = Object.keys(r.data.accounts);
-                    const selects = ['activateDirectType', 'createKeysType', 'unactivatedType'];
+                    const selects = ['activateDirectType', 'keysTypeFilter'];
                     selects.forEach(id => {
                         const sel = document.getElementById(id);
                         if (!sel) return;
@@ -1473,92 +1451,234 @@
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        //  CREATE KEYS
+        //  KEYS — unified list + filters
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        async function createKeys() {
-            const type = document.getElementById('createKeysType').value;
-            const amount = parseInt(document.getElementById('createKeysAmount').value) || 1;
-            if (!type) return toast('Select an account type', 'error');
+        let allKeys = [];
+        let keysSort = { field: 'date', dir: 'desc' };
 
-            setLoading('createKeysBtn', true);
-            try {
-                const r = await api('POST', '/api/v1/create_keys', { account_type: type, amount });
-                showOutput('createKeys', r.data, r.ok);
-                toast(r.ok ? `Created ${r.data.keys?.length || 0} keys` : (r.data.message || 'Failed'), r.ok ? 'success' : 'error');
-            } catch (err) {
-                toast('Error: ' + err.message, 'error');
-            }
-            setLoading('createKeysBtn', false);
+        const KEY_DATE_FIELDS = ['date', 'created_at', 'createdAt', 'created', 'activated_at', 'activatedAt', 'activated_on', 'timestamp', 'time', 'datetime'];
+        const KEY_TYPE_FIELDS = ['account_type', 'accountType', 'type', 'account', 'product'];
+
+        // Pull the array of keys out of whatever shape the API returns.
+        function getKeyArray(data) {
+            if (!data) return [];
+            if (Array.isArray(data)) return data;
+            return data.keys || data.history || data.activations || data.results || data.data || [];
         }
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        //  KEY DETAILS
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        async function getKeyDetails() {
-            const key = document.getElementById('keyDetailsInput').value.trim();
-            if (!key) return toast('Enter an activation key', 'error');
-
-            setLoading('keyDetailsBtn', true);
-            try {
-                const r = await apiGet('/api/v1/key_details', { activation_key: key });
-                showOutput('keyDetails', r.data, r.ok);
-            } catch (err) {
-                toast('Error: ' + err.message, 'error');
+        function extractField(item, fields, fallback) {
+            if (item && typeof item === 'object') {
+                for (const f of fields) {
+                    if (item[f] !== undefined && item[f] !== null && item[f] !== '') return item[f];
+                }
             }
-            setLoading('keyDetailsBtn', false);
+            return fallback !== undefined ? fallback : '';
         }
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        //  HISTORY
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        async function getHistory() {
-            const amount = parseInt(document.getElementById('historyAmount').value) || 20;
-
-            setLoading('historyBtn', true);
-            try {
-                const r = await apiGet('/api/v1/history_keys', { amount });
-                showOutput('history', r.data, r.ok);
-            } catch (err) {
-                toast('Error: ' + err.message, 'error');
+        function extractStatus(item, fallback) {
+            if (item && typeof item === 'object') {
+                if (typeof item.activated === 'boolean') return item.activated ? 'activated' : 'unactivated';
+                if (item.status) return String(item.status).toLowerCase();
             }
-            setLoading('historyBtn', false);
+            return fallback;
         }
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        //  UNACTIVATED KEYS
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        async function getUnactivated() {
-            const type = document.getElementById('unactivatedType').value;
-            if (!type) return toast('Select an account type', 'error');
-
-            setLoading('unactivatedBtn', true);
-            try {
-                const r = await apiGet('/api/v1/unactivated_keys', { account_type: type });
-                showOutput('unactivated', r.data, r.ok);
-            } catch (err) {
-                toast('Error: ' + err.message, 'error');
-            }
-            setLoading('unactivatedBtn', false);
+        function normalizeKey(item, defaults) {
+            return {
+                key: keyString(item),
+                account_type: extractField(item, KEY_TYPE_FIELDS, defaults.account_type),
+                status: extractStatus(item, defaults.status),
+                date: extractField(item, KEY_DATE_FIELDS, ''),
+                raw: item,
+            };
         }
 
-        async function deleteAllUnactivated() {
-            const type = document.getElementById('unactivatedType').value;
-            if (!type) return toast('Select an account type first', 'error');
-            if (!confirm(`Delete ALL unactivated keys for "${type}"? This cannot be undone.`)) return;
+        function parseDate(v) {
+            if (!v) return null;
+            const d = new Date(v);
+            return isNaN(d.getTime()) ? null : d;
+        }
 
+        function formatDate(v) {
+            const d = parseDate(v);
+            if (!d) return v ? String(v) : '—';
+            return d.toLocaleString();
+        }
+
+        // Build the combined list: activations (history) + unactivated (per type).
+        async function loadAllKeys() {
+            setLoading('keysRefreshBtn', true);
             try {
-                const auth = getAuth();
-                const headers = { 'Content-Type': 'application/json' };
-                if (auth) headers['X-Panel-Auth'] = auth;
+                await populateDropdowns();
 
-                const url = `/api/v1/unactivated_keys/all?account_type=${encodeURIComponent(type)}`;
-                const res = await fetch(url, { method: 'DELETE', headers });
-                const data = await res.json();
-                showOutput('unactivated', data, res.ok);
-                toast(res.ok ? 'All unactivated keys deleted' : (data.message || 'Failed'), res.ok ? 'success' : 'error');
+                const tasks = [
+                    apiGet('/api/v1/history_keys', { amount: 100 })
+                        .then(r => ({ kind: 'activated', r })).catch(() => null),
+                ];
+                (accountTypes || []).forEach(t => {
+                    tasks.push(
+                        apiGet('/api/v1/unactivated_keys', { account_type: t })
+                            .then(r => ({ kind: 'unactivated', type: t, r })).catch(() => null)
+                    );
+                });
+
+                const results = await Promise.all(tasks);
+                const collected = [];
+                results.forEach(res => {
+                    if (!res || !res.r || !res.r.ok) return;
+                    getKeyArray(res.r.data).forEach(item => {
+                        collected.push(res.kind === 'activated'
+                            ? normalizeKey(item, { status: 'activated', account_type: '' })
+                            : normalizeKey(item, { status: 'unactivated', account_type: res.type }));
+                    });
+                });
+
+                allKeys = collected;
+                populateKeysTypeFilter();
+                renderKeysTable();
+                toast(`Loaded ${allKeys.length} key${allKeys.length === 1 ? '' : 's'}`, allKeys.length ? 'success' : 'info');
             } catch (err) {
-                toast('Error: ' + err.message, 'error');
+                toast('Failed to load keys: ' + err.message, 'error');
             }
+            setLoading('keysRefreshBtn', false);
+        }
+
+        function populateKeysTypeFilter() {
+            const sel = document.getElementById('keysTypeFilter');
+            if (!sel) return;
+            const current = sel.value;
+            const types = new Set(accountTypes || []);
+            allKeys.forEach(k => { if (k.account_type) types.add(k.account_type); });
+            while (sel.options.length > 1) sel.remove(1);
+            [...types].sort().forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+        }
+
+        function getFilteredKeys() {
+            const q = (document.getElementById('keysSearch').value || '').trim().toLowerCase();
+            const type = document.getElementById('keysTypeFilter').value;
+            const status = document.getElementById('keysStatusFilter').value;
+            const fromStr = document.getElementById('keysDateFrom').value;
+            const toStr = document.getElementById('keysDateTo').value;
+            const from = fromStr ? new Date(fromStr + 'T00:00:00') : null;
+            const to = toStr ? new Date(toStr + 'T23:59:59') : null;
+
+            const rows = allKeys.filter(k => {
+                if (q && !(k.key.toLowerCase().includes(q) || (k.account_type || '').toLowerCase().includes(q))) return false;
+                if (type && k.account_type !== type) return false;
+                if (status && k.status !== status) return false;
+                if (from || to) {
+                    const d = parseDate(k.date);
+                    if (!d) return false;
+                    if (from && d < from) return false;
+                    if (to && d > to) return false;
+                }
+                return true;
+            });
+
+            const { field, dir } = keysSort;
+            rows.sort((a, b) => {
+                let av, bv;
+                if (field === 'date') {
+                    av = parseDate(a.date)?.getTime() || 0;
+                    bv = parseDate(b.date)?.getTime() || 0;
+                } else {
+                    av = (a[field] || '').toString().toLowerCase();
+                    bv = (b[field] || '').toString().toLowerCase();
+                }
+                if (av < bv) return dir === 'asc' ? -1 : 1;
+                if (av > bv) return dir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            return rows;
+        }
+
+        function renderKeysTable() {
+            const tbody = document.getElementById('keysTableBody');
+            if (!tbody) return;
+            const rows = getFilteredKeys();
+            tbody.innerHTML = '';
+
+            if (!rows.length) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.className = 'keys-empty';
+                td.textContent = allKeys.length ? 'No keys match the current filters' : 'No keys loaded — click Refresh';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+            } else {
+                rows.forEach(k => {
+                    const tr = document.createElement('tr');
+
+                    const keyTd = document.createElement('td');
+                    keyTd.className = 'key-code';
+                    keyTd.textContent = k.key;
+
+                    const typeTd = document.createElement('td');
+                    typeTd.textContent = k.account_type || '—';
+
+                    const statusTd = document.createElement('td');
+                    const badge = document.createElement('span');
+                    badge.className = 'status-badge ' + (k.status === 'activated' ? 'status-activated' : 'status-unactivated');
+                    badge.textContent = k.status || 'unknown';
+                    statusTd.appendChild(badge);
+
+                    const dateTd = document.createElement('td');
+                    dateTd.textContent = formatDate(k.date);
+
+                    const copyTd = document.createElement('td');
+                    const btn = document.createElement('button');
+                    btn.className = 'copy-btn';
+                    btn.textContent = 'Copy';
+                    btn.onclick = () => copyToClipboard(k.key, btn);
+                    copyTd.appendChild(btn);
+
+                    tr.append(keyTd, typeTd, statusTd, dateTd, copyTd);
+                    tbody.appendChild(tr);
+                });
+            }
+
+            const countEl = document.getElementById('keysCount');
+            if (countEl) countEl.textContent = `${rows.length} of ${allKeys.length} keys`;
+            updateSortIndicators();
+        }
+
+        function updateSortIndicators() {
+            const labels = { key: 'Key', account_type: 'Account Type', status: 'Status', date: 'Date' };
+            document.querySelectorAll('#keysTable th[data-sort]').forEach(th => {
+                const base = th.getAttribute('data-sort');
+                let label = labels[base] || base;
+                if (base === keysSort.field) label += keysSort.dir === 'asc' ? ' ▲' : ' ▼';
+                th.textContent = label;
+            });
+        }
+
+        function sortKeysBy(field) {
+            if (keysSort.field === field) {
+                keysSort.dir = keysSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                keysSort.field = field;
+                keysSort.dir = field === 'date' ? 'desc' : 'asc';
+            }
+            renderKeysTable();
+        }
+
+        function clearKeysFilters() {
+            ['keysSearch', 'keysTypeFilter', 'keysStatusFilter', 'keysDateFrom', 'keysDateTo']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            renderKeysTable();
+        }
+
+        function copyFilteredKeys(btn) {
+            const rows = getFilteredKeys();
+            if (!rows.length) return toast('No keys to copy', 'error');
+            copyToClipboard(rows.map(k => k.key).join('\n'), btn);
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
