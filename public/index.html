@@ -770,8 +770,20 @@
             <!-- ═══════════════ PANEL (all tabs) ═══════════════ -->
             <div id="panel" class="page">
 
-                <!-- Panel content (open: no password required) -->
-                <div class="panel-content unlocked" id="panelContent">
+                <!-- Login Gate -->
+                <div class="login-gate" id="loginGate">
+                    <div class="login-gate-icon">🔒</div>
+                    <div class="login-gate-title">Panel Access</div>
+                    <div class="login-gate-desc">Enter the panel password to continue</div>
+                    <div class="login-gate-form">
+                        <input type="password" class="form-input" id="loginPasswordInput" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter')panelLogin()">
+                        <button class="btn btn-primary" onclick="panelLogin()">Unlock</button>
+                    </div>
+                    <div class="login-gate-error" id="loginError">Invalid password</div>
+                </div>
+
+                <!-- Panel content (hidden until authenticated) -->
+                <div class="panel-content" id="panelContent">
                     <!-- Sub-navigation for panel sections -->
                     <div style="display:flex;gap:4px;background:var(--bg-secondary);border-radius:8px;padding:4px;border:1px solid var(--border);margin-bottom:24px;width:fit-content">
                         <div class="panel-tab active" onclick="showPanelTab('panelDashboard', this)" style="padding:8px 18px;border-radius:6px;color:#fff;background:var(--accent);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Dashboard</div>
@@ -946,7 +958,7 @@
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="icon">🔑</span> All Keys</div>
-                            <button class="btn btn-primary" id="keysRefreshBtn" onclick="loadAllKeys()">
+                            <button class="btn btn-primary" id="keysRefreshBtn" onclick="loadAllKeys(true)">
                                 <span class="spinner"></span>
                                 <span class="btn-text">↻ Refresh</span>
                             </button>
@@ -954,7 +966,7 @@
 
                         <div class="keys-filters">
                             <input type="text" class="form-input" id="keysSearch" placeholder="Search key or account type..." oninput="renderKeysTable()">
-                            <select class="form-select" id="keysTypeFilter" onchange="renderKeysTable()">
+                            <select class="form-select" id="keysTypeFilter" onchange="loadAllKeys()">
                                 <option value="">All account types</option>
                             </select>
                             <select class="form-select" id="keysStatusFilter" onchange="renderKeysTable()">
@@ -1094,6 +1106,37 @@
             return sessionStorage.getItem('nfa_panel_auth') || '';
         }
 
+        async function panelLogin() {
+            const pwd = document.getElementById('loginPasswordInput').value.trim();
+            if (!pwd) return;
+
+            sessionStorage.setItem('nfa_panel_auth', pwd);
+            const errEl = document.getElementById('loginError');
+            errEl.style.display = 'none';
+
+            try {
+                const r = await apiGet('/api/v1/status', null, 10000);
+                if (r.ok) {
+                    document.getElementById('loginGate').style.display = 'none';
+                    document.getElementById('panelContent').classList.add('unlocked');
+                    loadDashboard();
+                    populateDropdowns();
+                } else {
+                    sessionStorage.removeItem('nfa_panel_auth');
+                    const msg = (r.data && r.data.message) ? String(r.data.message) : '';
+                    const isAuthError = r.status === 403 && /panel auth|invalid panel/i.test(msg);
+                    errEl.textContent = isAuthError
+                        ? 'Invalid password'
+                        : (msg || `Login failed (HTTP ${r.status})`);
+                    errEl.style.display = 'block';
+                }
+            } catch (e) {
+                sessionStorage.removeItem('nfa_panel_auth');
+                errEl.textContent = 'Connection error';
+                errEl.style.display = 'block';
+            }
+        }
+
         // ── API call helper ──
         async function api(method, path, body = null, timeoutMs = 30000) {
             const auth = getAuth();
@@ -1170,8 +1213,15 @@
             if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
 
             if (name === 'panel') {
-                loadDashboard();
-                populateDropdowns();
+                if (getAuth()) {
+                    document.getElementById('loginGate').style.display = 'none';
+                    document.getElementById('panelContent').classList.add('unlocked');
+                    loadDashboard();
+                    populateDropdowns();
+                } else {
+                    document.getElementById('loginGate').style.display = 'flex';
+                    document.getElementById('panelContent').classList.remove('unlocked');
+                }
             }
         }
 
@@ -1446,7 +1496,12 @@
                 const r = await api('POST', '/api/v1/create_keys', { account_type: type, amount });
                 showOutput('createKeys', r.data, r.ok);
                 toast(r.ok ? `Created ${r.data.keys?.length || 0} keys` : (r.data.message || 'Failed'), r.ok ? 'success' : 'error');
-                if (r.ok) loadAllKeys();
+                if (r.ok) {
+                    keysCache = {};
+                    const tf = document.getElementById('keysTypeFilter');
+                    if (tf) tf.value = type;
+                    loadAllKeys(true);
+                }
             } catch (err) {
                 toast('Error: ' + err.message, 'error');
             }
@@ -1505,38 +1560,71 @@
             return d.toLocaleString();
         }
 
-        // Build the combined list: activations (history) + unactivated (per type).
-        async function loadAllKeys() {
+        // Short-lived cache so reopening the tab / re-selecting a filter doesn't refire calls.
+        let keysCache = {};
+        const KEYS_CACHE_TTL = 60000;
+
+        // Run async tasks with bounded concurrency to avoid bursting the provider's rate limit.
+        async function runWithLimit(items, limit, fn) {
+            const results = new Array(items.length);
+            let next = 0;
+            async function worker() {
+                while (next < items.length) {
+                    const idx = next++;
+                    results[idx] = await fn(items[idx], idx);
+                }
+            }
+            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+            return results;
+        }
+
+        // Load keys: a single type when one is picked, or every type when "All account types" is selected.
+        async function loadAllKeys(force = false) {
             setLoading('keysRefreshBtn', true);
             try {
                 await populateDropdowns();
 
-                const tasks = [
-                    apiGet('/api/v1/history_keys', { amount: 100 })
-                        .then(r => ({ kind: 'activated', r })).catch(() => null),
-                ];
-                (accountTypes || []).forEach(t => {
-                    tasks.push(
-                        apiGet('/api/v1/unactivated_keys', { account_type: t })
-                            .then(r => ({ kind: 'unactivated', type: t, r })).catch(() => null)
-                    );
-                });
+                const type = document.getElementById('keysTypeFilter').value;
+                const cacheKey = type || '__all__';
+                const cached = keysCache[cacheKey];
+                if (!force && cached && (Date.now() - cached.ts) < KEYS_CACHE_TTL) {
+                    allKeys = cached.data;
+                    renderKeysTable();
+                    setLoading('keysRefreshBtn', false);
+                    return;
+                }
 
-                const results = await Promise.all(tasks);
                 const collected = [];
-                results.forEach(res => {
-                    if (!res || !res.r || !res.r.ok) return;
-                    getKeyArray(res.r.data).forEach(item => {
-                        collected.push(res.kind === 'activated'
-                            ? normalizeKey(item, { status: 'activated', account_type: '' })
-                            : normalizeKey(item, { status: 'unactivated', account_type: res.type }));
+                if (type) {
+                    const r = await apiGet('/api/v1/unactivated_keys', { account_type: type });
+                    if (r && r.ok) {
+                        getKeyArray(r.data).forEach(item => {
+                            collected.push(normalizeKey(item, { status: 'unactivated', account_type: type }));
+                        });
+                    }
+                } else {
+                    const historyRes = await apiGet('/api/v1/history_keys', { amount: 100 }).catch(() => null);
+                    if (historyRes && historyRes.ok) {
+                        getKeyArray(historyRes.data).forEach(item => {
+                            collected.push(normalizeKey(item, { status: 'activated', account_type: '' }));
+                        });
+                    }
+                    const results = await runWithLimit(accountTypes || [], 5, t =>
+                        apiGet('/api/v1/unactivated_keys', { account_type: t })
+                            .then(r => ({ type: t, r })).catch(() => null));
+                    results.forEach(res => {
+                        if (!res || !res.r || !res.r.ok) return;
+                        getKeyArray(res.r.data).forEach(item => {
+                            collected.push(normalizeKey(item, { status: 'unactivated', account_type: res.type }));
+                        });
                     });
-                });
+                }
 
                 allKeys = collected;
-                populateKeysTypeFilter();
+                keysCache[cacheKey] = { ts: Date.now(), data: collected };
                 renderKeysTable();
-                toast(`Loaded ${allKeys.length} key${allKeys.length === 1 ? '' : 's'}`, allKeys.length ? 'success' : 'info');
+                const label = type || 'all account types';
+                toast(`Loaded ${allKeys.length} key${allKeys.length === 1 ? '' : 's'} for ${label}`, allKeys.length ? 'success' : 'info');
             } catch (err) {
                 toast('Failed to load keys: ' + err.message, 'error');
             }
@@ -1609,7 +1697,7 @@
                 const td = document.createElement('td');
                 td.colSpan = 5;
                 td.className = 'keys-empty';
-                td.textContent = allKeys.length ? 'No keys match the current filters' : 'No keys loaded — click Refresh';
+                td.textContent = allKeys.length ? 'No keys match the current filters' : 'No keys found';
                 tr.appendChild(td);
                 tbody.appendChild(tr);
             } else {
@@ -1672,7 +1760,7 @@
         function clearKeysFilters() {
             ['keysSearch', 'keysTypeFilter', 'keysStatusFilter', 'keysDateFrom', 'keysDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-            renderKeysTable();
+            loadAllKeys();
         }
 
         function copyFilteredKeys(btn) {
