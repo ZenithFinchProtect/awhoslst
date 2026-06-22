@@ -770,20 +770,8 @@
             <!-- ═══════════════ PANEL (all tabs) ═══════════════ -->
             <div id="panel" class="page">
 
-                <!-- Login Gate -->
-                <div class="login-gate" id="loginGate">
-                    <div class="login-gate-icon">🔒</div>
-                    <div class="login-gate-title">Panel Access</div>
-                    <div class="login-gate-desc">Enter the panel password to continue</div>
-                    <div class="login-gate-form">
-                        <input type="password" class="form-input" id="loginPasswordInput" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter')panelLogin()">
-                        <button class="btn btn-primary" onclick="panelLogin()">Unlock</button>
-                    </div>
-                    <div class="login-gate-error" id="loginError">Invalid password</div>
-                </div>
-
-                <!-- Panel content (hidden until authenticated) -->
-                <div class="panel-content" id="panelContent">
+                <!-- Panel content (open: no password required) -->
+                <div class="panel-content unlocked" id="panelContent">
                     <!-- Sub-navigation for panel sections -->
                     <div style="display:flex;gap:4px;background:var(--bg-secondary);border-radius:8px;padding:4px;border:1px solid var(--border);margin-bottom:24px;width:fit-content">
                         <div class="panel-tab active" onclick="showPanelTab('panelDashboard', this)" style="padding:8px 18px;border-radius:6px;color:#fff;background:var(--accent);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Dashboard</div>
@@ -1106,38 +1094,6 @@
             return sessionStorage.getItem('nfa_panel_auth') || '';
         }
 
-        async function panelLogin() {
-            const pwd = document.getElementById('loginPasswordInput').value.trim();
-            if (!pwd) return;
-            
-            sessionStorage.setItem('nfa_panel_auth', pwd);
-            const errEl = document.getElementById('loginError');
-            errEl.style.display = 'none';
-
-            try {
-                // Test auth by hitting /api/v1/status
-                const r = await apiGet('/api/v1/status', null, 10000);
-                if (r.ok) {
-                    document.getElementById('loginGate').style.display = 'none';
-                    document.getElementById('panelContent').classList.add('unlocked');
-                    loadDashboard();
-                    populateDropdowns();
-                } else {
-                    sessionStorage.removeItem('nfa_panel_auth');
-                    const msg = (r.data && r.data.message) ? String(r.data.message) : '';
-                    const isAuthError = r.status === 403 && /panel auth|invalid panel/i.test(msg);
-                    errEl.textContent = isAuthError
-                        ? 'Invalid password'
-                        : (msg || `Login failed (HTTP ${r.status})`);
-                    errEl.style.display = 'block';
-                }
-            } catch (e) {
-                sessionStorage.removeItem('nfa_panel_auth');
-                errEl.textContent = 'Connection error';
-                errEl.style.display = 'block';
-            }
-        }
-
         // ── API call helper ──
         async function api(method, path, body = null, timeoutMs = 30000) {
             const auth = getAuth();
@@ -1214,15 +1170,8 @@
             if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
 
             if (name === 'panel') {
-                if (getAuth()) {
-                    document.getElementById('loginGate').style.display = 'none';
-                    document.getElementById('panelContent').classList.add('unlocked');
-                    loadDashboard();
-                    populateDropdowns();
-                } else {
-                    document.getElementById('loginGate').style.display = 'flex';
-                    document.getElementById('panelContent').classList.remove('unlocked');
-                }
+                loadDashboard();
+                populateDropdowns();
             }
         }
 
