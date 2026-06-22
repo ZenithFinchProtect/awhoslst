@@ -1124,7 +1124,11 @@
                     populateDropdowns();
                 } else {
                     sessionStorage.removeItem('nfa_panel_auth');
-                    errEl.textContent = 'Invalid password';
+                    const msg = (r.data && r.data.message) ? String(r.data.message) : '';
+                    const isAuthError = r.status === 403 && /panel auth|invalid panel/i.test(msg);
+                    errEl.textContent = isAuthError
+                        ? 'Invalid password'
+                        : (msg || `Login failed (HTTP ${r.status})`);
                     errEl.style.display = 'block';
                 }
             } catch (e) {
