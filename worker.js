@@ -33,6 +33,20 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
+    // --- Panel auth check ---
+    if (env.PANEL_AUTH_TOKEN) {
+      const isPublic = url.pathname.endsWith('/create_exe') || url.pathname.endsWith('/activate');
+      if (!isPublic) {
+        const token = request.headers.get('X-Panel-Auth') || '';
+        if (token !== env.PANEL_AUTH_TOKEN) {
+          return new Response(JSON.stringify({ status: 'error', message: 'Invalid panel authentication' }), {
+              status: 403,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+    }
+
     // --- Build upstream request ---
     const upstream = new URL(url.pathname + url.search, NFA_ORIGIN);
 
