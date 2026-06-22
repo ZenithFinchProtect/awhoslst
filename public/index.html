@@ -954,7 +954,7 @@
 
                         <div class="keys-filters">
                             <input type="text" class="form-input" id="keysSearch" placeholder="Search key or account type..." oninput="renderKeysTable()">
-                            <select class="form-select" id="keysTypeFilter" onchange="renderKeysTable()">
+                            <select class="form-select" id="keysTypeFilter" onchange="loadAllKeys()">
                                 <option value="">All account types</option>
                             </select>
                             <select class="form-select" id="keysStatusFilter" onchange="renderKeysTable()">
@@ -1446,7 +1446,11 @@
                 const r = await api('POST', '/api/v1/create_keys', { account_type: type, amount });
                 showOutput('createKeys', r.data, r.ok);
                 toast(r.ok ? `Created ${r.data.keys?.length || 0} keys` : (r.data.message || 'Failed'), r.ok ? 'success' : 'error');
-                if (r.ok) loadAllKeys();
+                if (r.ok) {
+                    const tf = document.getElementById('keysTypeFilter');
+                    if (tf) tf.value = type;
+                    loadAllKeys();
+                }
             } catch (err) {
                 toast('Error: ' + err.message, 'error');
             }
@@ -1505,38 +1509,31 @@
             return d.toLocaleString();
         }
 
-        // Build the combined list: activations (history) + unactivated (per type).
+        // Load keys for the selected account type only (nothing until a type is picked).
         async function loadAllKeys() {
             setLoading('keysRefreshBtn', true);
             try {
                 await populateDropdowns();
 
-                const tasks = [
-                    apiGet('/api/v1/history_keys', { amount: 100 })
-                        .then(r => ({ kind: 'activated', r })).catch(() => null),
-                ];
-                (accountTypes || []).forEach(t => {
-                    tasks.push(
-                        apiGet('/api/v1/unactivated_keys', { account_type: t })
-                            .then(r => ({ kind: 'unactivated', type: t, r })).catch(() => null)
-                    );
-                });
+                const type = document.getElementById('keysTypeFilter').value;
+                if (!type) {
+                    allKeys = [];
+                    renderKeysTable();
+                    setLoading('keysRefreshBtn', false);
+                    return;
+                }
 
-                const results = await Promise.all(tasks);
+                const r = await apiGet('/api/v1/unactivated_keys', { account_type: type });
                 const collected = [];
-                results.forEach(res => {
-                    if (!res || !res.r || !res.r.ok) return;
-                    getKeyArray(res.r.data).forEach(item => {
-                        collected.push(res.kind === 'activated'
-                            ? normalizeKey(item, { status: 'activated', account_type: '' })
-                            : normalizeKey(item, { status: 'unactivated', account_type: res.type }));
+                if (r && r.ok) {
+                    getKeyArray(r.data).forEach(item => {
+                        collected.push(normalizeKey(item, { status: 'unactivated', account_type: type }));
                     });
-                });
+                }
 
                 allKeys = collected;
-                populateKeysTypeFilter();
                 renderKeysTable();
-                toast(`Loaded ${allKeys.length} key${allKeys.length === 1 ? '' : 's'}`, allKeys.length ? 'success' : 'info');
+                toast(`Loaded ${allKeys.length} key${allKeys.length === 1 ? '' : 's'} for ${type}`, allKeys.length ? 'success' : 'info');
             } catch (err) {
                 toast('Failed to load keys: ' + err.message, 'error');
             }
@@ -1609,7 +1606,7 @@
                 const td = document.createElement('td');
                 td.colSpan = 5;
                 td.className = 'keys-empty';
-                td.textContent = allKeys.length ? 'No keys match the current filters' : 'No keys loaded — click Refresh';
+                td.textContent = allKeys.length ? 'No keys match the current filters' : 'Select an account type to view its keys';
                 tr.appendChild(td);
                 tbody.appendChild(tr);
             } else {
@@ -1672,7 +1669,7 @@
         function clearKeysFilters() {
             ['keysSearch', 'keysTypeFilter', 'keysStatusFilter', 'keysDateFrom', 'keysDateTo']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-            renderKeysTable();
+            loadAllKeys();
         }
 
         function copyFilteredKeys(btn) {
