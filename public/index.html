@@ -782,6 +782,18 @@
                     <div class="login-gate-error" id="loginError">Invalid password</div>
                 </div>
 
+                <!-- Background prompt (shown right after login) -->
+                <div id="bgPrompt" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center">
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:380px;text-align:center">
+                        <div style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px">Would you like to add a background?</div>
+                        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">Apply the custom background image to the panel.</div>
+                        <div style="display:flex;gap:10px;justify-content:center">
+                            <button class="btn btn-primary" onclick="chooseBackground(true)">Yes</button>
+                            <button class="btn btn-secondary" onclick="chooseBackground(false)">No</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Panel content (hidden until authenticated) -->
                 <div class="panel-content" id="panelContent">
                     <!-- Sub-navigation for panel sections -->
@@ -1121,6 +1133,7 @@
                     document.getElementById('panelContent').classList.add('unlocked');
                     loadDashboard();
                     populateDropdowns();
+                    askBackgroundPrompt();
                 } else {
                     sessionStorage.removeItem('nfa_panel_auth');
                     const msg = (r.data && r.data.message) ? String(r.data.message) : '';
@@ -1135,6 +1148,34 @@
                 errEl.textContent = 'Connection error';
                 errEl.style.display = 'block';
             }
+        }
+
+        // ── Optional custom background (asked right after login) ──
+        // Placeholder image — replace this URL with your own image later.
+        const PANEL_BG_URL = 'https://via.placeholder.com/1920x1080.png?text=Replace+this+background+URL';
+
+        function applyPanelBackground(enabled) {
+            if (enabled) {
+                document.body.style.backgroundImage = `url("${PANEL_BG_URL}")`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+                document.body.style.backgroundAttachment = 'fixed';
+                document.body.style.backgroundRepeat = 'no-repeat';
+            } else {
+                document.body.style.backgroundImage = '';
+            }
+        }
+
+        function askBackgroundPrompt() {
+            const prompt = document.getElementById('bgPrompt');
+            if (prompt) prompt.style.display = 'flex';
+        }
+
+        function chooseBackground(enabled) {
+            localStorage.setItem('nfa_bg_enabled', enabled ? 'yes' : 'no');
+            applyPanelBackground(enabled);
+            const prompt = document.getElementById('bgPrompt');
+            if (prompt) prompt.style.display = 'none';
         }
 
         // ── API call helper ──
@@ -1216,6 +1257,7 @@
                 if (getAuth()) {
                     document.getElementById('loginGate').style.display = 'none';
                     document.getElementById('panelContent').classList.add('unlocked');
+                    applyPanelBackground(localStorage.getItem('nfa_bg_enabled') === 'yes');
                     loadDashboard();
                     populateDropdowns();
                 } else {
