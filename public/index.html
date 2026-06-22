@@ -1927,12 +1927,26 @@
             btn.disabled = true;
             btn.classList.add('loading');
 
-            const endpoint = currentModalAction === 'download' ? '/api/v1/create_exe' : '/api/v1/activate';
-
             try {
-                // Call API (this will bypass PANEL_AUTH_TOKEN in the proxy)
-                const r = await api('POST', endpoint, { activation_key: key }, 130000);
-                
+                let r;
+                if (currentModalAction === 'download') {
+                    // Build the loader for an already-activated key.
+                    r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
+
+                    // A freshly-generated key has no activation yet, so create_exe
+                    // returns "Activation not found". Activate it once, then retry.
+                    if (!r.ok && /activation not found/i.test(r.data?.message || '')) {
+                        const act = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
+                        if (act.ok) {
+                            r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
+                        } else {
+                            r = act;
+                        }
+                    }
+                } else {
+                    r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
+                }
+
                 const display = { ...r.data };
                 if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
                 
