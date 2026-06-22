@@ -925,6 +925,36 @@
                         <p class="section-desc">All activation keys — filter, sort, and copy</p>
                     </div>
 
+                    <div class="card" style="margin-bottom:16px">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">✨</span> Create Keys</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Account Type</label>
+                            <select class="form-select" id="createKeysType">
+                                <option value="">Select account type...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Amount (1-500)</label>
+                            <input type="number" class="form-input" id="createKeysAmount" min="1" max="500" value="1">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="createKeysBtn" onclick="createKeys()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Create Keys</span>
+                            </button>
+                        </div>
+                        <div class="output" id="createKeysOutput">
+                            <div class="output-header">
+                                <span class="output-title">Created Keys</span>
+                                <span class="output-status" id="createKeysStatus"></span>
+                            </div>
+                            <div class="output-body" id="createKeysBody"></div>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="icon">🔑</span> All Keys</div>
@@ -1314,7 +1344,7 @@
                 const r = await apiGet('/api/v1/accounts');
                 if (r.ok && r.data.accounts) {
                     accountTypes = Object.keys(r.data.accounts);
-                    const selects = ['activateDirectType', 'keysTypeFilter'];
+                    const selects = ['activateDirectType', 'keysTypeFilter', 'createKeysType'];
                     selects.forEach(id => {
                         const sel = document.getElementById(id);
                         if (!sel) return;
@@ -1453,6 +1483,23 @@
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         //  KEYS — unified list + filters
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function createKeys() {
+            const type = document.getElementById('createKeysType').value;
+            const amount = parseInt(document.getElementById('createKeysAmount').value) || 1;
+            if (!type) return toast('Select an account type', 'error');
+
+            setLoading('createKeysBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/create_keys', { account_type: type, amount });
+                showOutput('createKeys', r.data, r.ok);
+                toast(r.ok ? `Created ${r.data.keys?.length || 0} keys` : (r.data.message || 'Failed'), r.ok ? 'success' : 'error');
+                if (r.ok) loadAllKeys();
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('createKeysBtn', false);
+        }
+
         let allKeys = [];
         let keysSort = { field: 'date', dir: 'desc' };
 
