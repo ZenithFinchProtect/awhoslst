@@ -29,19 +29,56 @@ function extractKeyStrings(data) {
   }).filter(Boolean);
 }
 
+// Verify a SellAuth HMAC-SHA256 signature (hex) over the raw request body.
+async function verifyHmacSha256(rawBody, signatureHex, secret) {
+  try {
+    if (!signatureHex || !secret) return false;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = await crypto.subtle.sign('HMAC', key, enc.encode(rawBody));
+    const hex = [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('');
+    if (hex.length !== signatureHex.length) return false;
+    let diff = 0;
+    for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ signatureHex.charCodeAt(i);
+    return diff === 0;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Public webhook: mints license keys for one product and returns them as
-// plain text, one key per line. Protected by WEBHOOK_TOKEN.
+// plain text, one key per line. Works as a simple token-protected URL and as a
+// SellAuth Dynamic Delivery endpoint (POST + JSON body + HMAC signature).
 async function handleWebhookKeys(request, env, url) {
   const headers = { 'Content-Type': 'text/plain; charset=utf-8', 'Access-Control-Allow-Origin': '*' };
 
-  if (!env.WEBHOOK_TOKEN) {
-    return new Response('Webhook disabled: WEBHOOK_TOKEN is not configured', { status: 503, headers });
+  if (!env.WEBHOOK_TOKEN && !env.SELLAUTH_WEBHOOK_SECRET) {
+    return new Response('Webhook disabled: set WEBHOOK_TOKEN or SELLAUTH_WEBHOOK_SECRET', { status: 503, headers });
   }
 
   const params = url.searchParams;
+
+  // Read the raw body once (used for both signature verification and quantity).
+  let rawBody = '';
+  if (request.method === 'POST' || request.method === 'PUT') {
+    rawBody = await request.text();
+  }
+
+  // Auth: accept a matching token (per-variant URL) OR a valid SellAuth signature.
   const token = params.get('token') || request.headers.get('X-Webhook-Token') || '';
-  if (token !== env.WEBHOOK_TOKEN) {
+  let authed = !!(env.WEBHOOK_TOKEN && token === env.WEBHOOK_TOKEN);
+  if (!authed && env.SELLAUTH_WEBHOOK_SECRET) {
+    const sig = request.headers.get('X-Signature') || '';
+    authed = await verifyHmacSha256(rawBody, sig, env.SELLAUTH_WEBHOOK_SECRET);
+  }
+  if (!authed) {
     return new Response('Unauthorized', { status: 401, headers });
+  }
+
+  // Parse the SellAuth (or generic) JSON body if present.
+  let body = null;
+  if (rawBody) {
+    try { body = JSON.parse(rawBody); } catch (e) { body = null; }
   }
 
   const type = params.get('type') || params.get('product') || params.get('account_type');
@@ -49,7 +86,11 @@ async function handleWebhookKeys(request, env, url) {
     return new Response('Missing required "type" parameter', { status: 400, headers });
   }
 
-  let qty = parseInt(params.get('quantity') || params.get('qty') || params.get('amount') || '1', 10);
+  // Quantity: query param first, else SellAuth's item.quantity, else body amount.
+  let qty = parseInt(params.get('quantity') || params.get('qty') || params.get('amount') || '', 10);
+  if ((!Number.isFinite(qty) || qty < 1) && body) {
+    qty = parseInt((body.item && body.item.quantity) ?? body.quantity ?? body.amount ?? '1', 10);
+  }
   if (!Number.isFinite(qty) || qty < 1) qty = 1;
   if (qty > 500) qty = 500;
 
