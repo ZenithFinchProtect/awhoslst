@@ -23,4 +23,4 @@ crons = ["* * * * *"]
 # then paste the returned id below (and a preview_id for `wrangler dev`).
 [[kv_namespaces]]
 binding = "STOCK_BOT"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "14234c4109ef4e23957f850f64e6880d"
