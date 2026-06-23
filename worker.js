@@ -11,9 +11,16 @@ const ALLOWED_ORIGINS = new Set(['*']);
 // Configure this URL in SellAuth: Product → Delivery → Dynamic.
 const SELLAUTH_WEBHOOK_PATH = '/webhook/sellauth';
 
-// reselling.pro dynamic-delivery webhook path.
+// reselling.pro dynamic-delivery webhook path (JSON body order payload).
 // Configure this URL on the reselling.pro product's delivery settings.
 const RESELLING_WEBHOOK_PATH = '/webhook/reselling';
+
+// Token-authenticated key-delivery webhook (query-string style):
+//   GET|POST /webhook/keys?type=<nfa_type>&token=<secret>&quantity=<n>
+// This is the shape reselling.pro's delivery actually calls — the NFA account
+// type is passed directly, so no name matching is needed. `token` must equal
+// KEYS_WEBHOOK_TOKEN so the mint endpoint can't be abused.
+const KEYS_WEBHOOK_PATH = '/webhook/keys';
 
 // Stock Discord bot — config API + KV key.
 const STOCK_BOT_PREFIX = '/api/stock-bot/';
@@ -38,9 +45,14 @@ export default {
       return handleSellAuthWebhook(request, env);
     }
 
-    // --- reselling.pro dynamic-delivery webhook ---
+    // --- reselling.pro dynamic-delivery webhook (JSON body) ---
     if (url.pathname === RESELLING_WEBHOOK_PATH) {
       return handleResellingWebhook(request, env);
+    }
+
+    // --- Token-authenticated key delivery (query-string) ---
+    if (url.pathname === KEYS_WEBHOOK_PATH) {
+      return handleKeysWebhook(request, env, url);
     }
 
     // --- Stock Discord bot config/control API ---
@@ -423,6 +435,48 @@ function normalizeDeliveryItem(payload) {
     quantity,
     custom_fields,
   };
+}
+
+// Token-authenticated, query-string key delivery used by reselling.pro:
+//   GET|POST /webhook/keys?type=<type>&token=<secret>&quantity=<n>
+// `type` may be an exact NFA type or a display name (matched against the live
+// type list). `quantity` defaults to 1. Returns the minted keys as plain text.
+async function handleKeysWebhook(request, env, url) {
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return plain(405, 'Method not allowed');
+  }
+
+  const params = url.searchParams;
+  const token = params.get('token') || request.headers.get('X-Token') || '';
+
+  if (!env.KEYS_WEBHOOK_TOKEN) {
+    return plain(500, 'Server configuration error: KEYS_WEBHOOK_TOKEN is not set');
+  }
+  if (!token || !timingSafeEqual(token, env.KEYS_WEBHOOK_TOKEN)) {
+    return plain(401, 'Invalid token');
+  }
+  if (!env.NFA_API_KEY) {
+    return plain(500, 'Server configuration error: NFA_API_KEY is not set');
+  }
+
+  const rawType = (params.get('type') || params.get('account_type') || '').trim();
+  if (!rawType) {
+    return plain(400, 'Missing type');
+  }
+  const quantity = Number(params.get('quantity')) > 0 ? Number(params.get('quantity')) : 1;
+
+  // Accept an exact NFA type; otherwise try to match a display name.
+  let accountType = rawType;
+  const validTypes = await getValidAccountTypes(env);
+  if (validTypes.length && !validTypes.includes(rawType)) {
+    const matched = matchAccountType(rawType, validTypes);
+    if (matched) accountType = matched;
+    else return plain(400, `Account type '${rawType}' not found`);
+  }
+
+  console.log('keys webhook', JSON.stringify({ type: rawType, resolved: accountType, quantity }));
+
+  return deliverKeys(env, accountType, quantity);
 }
 
 async function handleResellingWebhook(request, env) {
