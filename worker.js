@@ -460,6 +460,18 @@ async function handleResellingWebhook(request, env) {
 
   const item = normalizeDeliveryItem(payload);
   const accountType = await resolveAccountType(item, env, env.RESELLING_PRODUCT_MAP);
+
+  // Observability (no customer PII): payload shape + what we resolved.
+  console.log('reselling webhook', JSON.stringify({
+    topKeys: Object.keys(payload || {}),
+    product: item.product.name,
+    variant: item.variant.name,
+    product_id: item.product_id,
+    variant_id: item.variant_id,
+    quantity: item.quantity,
+    resolved: accountType,
+  }));
+
   if (!accountType) {
     return plain(400, 'Unable to determine account type for this product. Configure RESELLING_PRODUCT_MAP or name the reselling.pro product to match a valid NFA account type.');
   }
