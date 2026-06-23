@@ -11,6 +11,10 @@ const ALLOWED_ORIGINS = new Set(['*']);
 // Configure this URL in SellAuth: Product → Delivery → Dynamic.
 const SELLAUTH_WEBHOOK_PATH = '/webhook/sellauth';
 
+// reselling.pro dynamic-delivery webhook path.
+// Configure this URL on the reselling.pro product's delivery settings.
+const RESELLING_WEBHOOK_PATH = '/webhook/reselling';
+
 // Stock Discord bot — config API + KV key.
 const STOCK_BOT_PREFIX = '/api/stock-bot/';
 const STOCK_BOT_CONFIG_KEY = 'config';
@@ -32,6 +36,11 @@ export default {
     // --- SellAuth Dynamic Delivery webhook ---
     if (url.pathname === SELLAUTH_WEBHOOK_PATH) {
       return handleSellAuthWebhook(request, env);
+    }
+
+    // --- reselling.pro dynamic-delivery webhook ---
+    if (url.pathname === RESELLING_WEBHOOK_PATH) {
+      return handleResellingWebhook(request, env);
     }
 
     // --- Stock Discord bot config/control API ---
@@ -232,20 +241,22 @@ function matchAccountType(text, validTypes) {
   return best && !tie ? best : null;
 }
 
-// Decide which NFA account type to mint for a SellAuth item.
-// Priority:
-//   1. SELLAUTH_PRODUCT_MAP env (JSON) keyed by variant_id, then product_id.
+// Decide which NFA account type to mint for a delivery item (SellAuth or
+// reselling.pro). Priority:
+//   1. A product map env (JSON) keyed by variant_id, then product_id.
 //   2. A custom field literally named "account_type".
 //   3. Automatic match of the variant/product name against the live NFA type list.
-//   4. The raw SellAuth variant name, then the product name.
-async function resolveAccountType(item, env) {
+//   4. The raw variant name, then the product name.
+// `mapJson` is the raw JSON string of the per-platform product map
+// (SELLAUTH_PRODUCT_MAP by default, RESELLING_PRODUCT_MAP for reselling.pro).
+async function resolveAccountType(item, env, mapJson = env.SELLAUTH_PRODUCT_MAP) {
   const product = item.product || {};
   const variant = item.variant || {};
 
-  if (env.SELLAUTH_PRODUCT_MAP) {
+  if (mapJson) {
     let map = null;
     try {
-      map = JSON.parse(env.SELLAUTH_PRODUCT_MAP);
+      map = JSON.parse(mapJson);
     } catch {
       map = null;
     }
@@ -320,7 +331,13 @@ async function handleSellAuthWebhook(request, env) {
   }
 
   const amount = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+  return deliverKeys(env, accountType, amount);
+}
 
+// Mint `amount` keys of `accountType` from NFA and return them as the webhook
+// response (one deliverable per line on HTTP 200). Upstream 5xx maps to a
+// retryable 502; other failures to a non-retryable 400.
+async function deliverKeys(env, accountType, amount) {
   let nfaResponse;
   try {
     nfaResponse = await fetch(`${NFA_ORIGIN}/api/v1/create_keys`, {
@@ -333,7 +350,6 @@ async function handleSellAuthWebhook(request, env) {
       body: JSON.stringify({ account_type: accountType, amount }),
     });
   } catch (err) {
-    // Network/upstream failure → retryable (5xx).
     return plain(502, 'Upstream request failed: ' + err.message);
   }
 
@@ -347,7 +363,6 @@ async function handleSellAuthWebhook(request, env) {
 
   if (!nfaResponse.ok) {
     const message = (data && data.message) || text || 'Failed to create keys';
-    // Map upstream 5xx to retryable; everything else is non-retryable.
     const status = nfaResponse.status >= 500 ? 502 : 400;
     return plain(status, message);
   }
@@ -357,8 +372,100 @@ async function handleSellAuthWebhook(request, env) {
     return plain(400, (data && data.message) || 'No keys were generated for this order.');
   }
 
-  // Success: one deliverable per line.
   return plain(200, keys.join('\n'));
+}
+
+// Normalize a dynamic-delivery payload into the { product, variant, product_id,
+// variant_id, quantity, custom_fields } shape resolveAccountType expects.
+// Tolerant of the field naming used by reselling.pro / SellAuth / Komerza /
+// Shoppex / Sell.app (camelCase + snake_case, nested item/line_item/order.items).
+function normalizeDeliveryItem(payload) {
+  const p = payload || {};
+  const item = p.item || {};
+  const li = p.line_item || p.lineItem || {};
+  const orderItem =
+    (p.order && Array.isArray(p.order.items) && p.order.items[0]) ||
+    (Array.isArray(p.items) && p.items[0]) ||
+    {};
+  const product = item.product || p.product || {};
+  const variant = item.variant || p.variant || {};
+
+  const productName =
+    product.name || product.title ||
+    p.productName || p.productTitle || p.product_title ||
+    li.product_title || li.productName ||
+    orderItem.productName || orderItem.product_name || orderItem.name || '';
+  const variantName =
+    variant.name || variant.title ||
+    p.variantName || p.variantTitle || p.variant_title ||
+    li.variant_title || li.variantName ||
+    orderItem.variantName || orderItem.variant_name || '';
+
+  const firstDefined = (...vals) => vals.find((v) => v != null && v !== '');
+  const productId = firstDefined(
+    item.product_id, p.productId, p.product_id, product.id,
+    li.product_id, orderItem.product_id, orderItem.productId,
+  );
+  const variantId = firstDefined(
+    item.variant_id, p.variantId, p.variant_id, variant.id,
+    li.variant_id, orderItem.variant_id, orderItem.variantId,
+  );
+  const quantity =
+    Number(item.quantity || p.quantity || li.quantity || orderItem.quantity || 1) || 1;
+  const custom_fields =
+    item.custom_fields || p.custom_fields || p.customFields || li.custom_fields || {};
+
+  return {
+    product_id: productId != null ? productId : null,
+    variant_id: variantId != null ? variantId : null,
+    product: { name: productName },
+    variant: { name: variantName },
+    quantity,
+    custom_fields,
+  };
+}
+
+async function handleResellingWebhook(request, env) {
+  if (request.method !== 'POST') {
+    return plain(405, 'Method not allowed');
+  }
+
+  const rawBody = await request.text();
+
+  // Optional signature verification (HMAC-SHA256 over the raw body). Only
+  // enforced when RESELLING_WEBHOOK_SECRET is set; the header name varies by
+  // platform so a few common ones are accepted.
+  if (env.RESELLING_WEBHOOK_SECRET) {
+    const provided =
+      request.headers.get('X-Signature') ||
+      request.headers.get('X-Webhook-Signature') ||
+      request.headers.get('X-Reselling-Signature') ||
+      '';
+    const expected = await hmacSha256Hex(env.RESELLING_WEBHOOK_SECRET, rawBody);
+    if (!provided || !timingSafeEqual(provided, expected)) {
+      return plain(401, 'Invalid signature');
+    }
+  }
+
+  if (!env.NFA_API_KEY) {
+    return plain(500, 'Server configuration error: NFA_API_KEY is not set');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return plain(400, 'Invalid JSON body');
+  }
+
+  const item = normalizeDeliveryItem(payload);
+  const accountType = await resolveAccountType(item, env, env.RESELLING_PRODUCT_MAP);
+  if (!accountType) {
+    return plain(400, 'Unable to determine account type for this product. Configure RESELLING_PRODUCT_MAP or name the reselling.pro product to match a valid NFA account type.');
+  }
+
+  const amount = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+  return deliverKeys(env, accountType, amount);
 }
 
 // ───────────────────────────────────────────────────────────────────────────
