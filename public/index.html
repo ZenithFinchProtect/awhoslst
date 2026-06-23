@@ -2043,7 +2043,11 @@
                 if (!r.ok) { toast('Failed to load stock bot config: ' + (r.data?.message || r.status), 'error'); return; }
                 const c = r.data.config || {};
                 document.getElementById('sbEnabled').checked = !!c.enabled;
-                document.getElementById('sbWebhookUrl').value = c.webhookUrl || '';
+                const webhookEl = document.getElementById('sbWebhookUrl');
+                webhookEl.value = '';
+                webhookEl.placeholder = c.webhookSet
+                    ? `Webhook set (${c.webhookHint || '••••'}) — leave blank to keep`
+                    : 'https://discord.com/api/webhooks/...';
                 document.getElementById('sbInterval').value = c.intervalMinutes ?? 60;
                 document.getElementById('sbCap').value = c.cap ?? 0;
                 document.getElementById('sbUsername').value = c.username || '';

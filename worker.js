@@ -328,7 +328,11 @@ async function saveStockConfig(env, config) {
 function sanitizeStockConfig(input, previous) {
   const cfg = { ...DEFAULT_STOCK_CONFIG, ...previous };
   if (typeof input.enabled === 'boolean') cfg.enabled = input.enabled;
-  if (typeof input.webhookUrl === 'string') cfg.webhookUrl = input.webhookUrl.trim();
+  // Only overwrite the webhook when a non-empty value is provided, so saving
+  // from the panel with the (masked) field left blank keeps the existing one.
+  if (typeof input.webhookUrl === 'string' && input.webhookUrl.trim()) {
+    cfg.webhookUrl = input.webhookUrl.trim();
+  }
   if (input.intervalMinutes != null) {
     const n = Math.round(Number(input.intervalMinutes));
     cfg.intervalMinutes = Number.isFinite(n) && n >= 1 ? n : DEFAULT_STOCK_CONFIG.intervalMinutes;
@@ -365,20 +369,22 @@ function sanitizeStockConfig(input, previous) {
   return cfg;
 }
 
-// Optional panel auth — mirrors the Pages function: enforced only when
-// PANEL_AUTH_TOKEN is configured.
-function panelAuthorized(request, env) {
-  if (!env.PANEL_AUTH_TOKEN) return true;
-  return (request.headers.get('X-Panel-Auth') || '') === env.PANEL_AUTH_TOKEN;
+// Return the config with the webhook URL masked, so an open panel never
+// exposes the full Discord webhook (a credential) to the public.
+function maskStockConfig(cfg) {
+  const url = cfg.webhookUrl || '';
+  const masked = { ...cfg, webhookUrl: '' };
+  masked.webhookSet = !!url;
+  masked.webhookHint = url ? '…' + url.slice(-6) : '';
+  return masked;
 }
 
+// NOTE: these endpoints are intentionally open, matching the rest of the panel
+// (the password gate was removed). The webhook is masked on read and preserved
+// when saved blank, so it isn't publicly readable or wiped by accident.
 async function handleStockBotApi(request, env, url) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders(null) });
-  }
-
-  if (!panelAuthorized(request, env)) {
-    return jsonResponse({ status: 'error', message: 'Invalid panel authentication' }, 403);
   }
 
   if (!stockBotConfigured(env)) {
@@ -393,7 +399,7 @@ async function handleStockBotApi(request, env, url) {
   // GET config
   if (action === 'config' && request.method === 'GET') {
     const cfg = await getStockConfig(env);
-    return jsonResponse({ status: 'ok', config: cfg });
+    return jsonResponse({ status: 'ok', config: maskStockConfig(cfg) });
   }
 
   // POST config — save
@@ -407,7 +413,7 @@ async function handleStockBotApi(request, env, url) {
     const previous = await getStockConfig(env);
     const cfg = sanitizeStockConfig(input, previous);
     await saveStockConfig(env, cfg);
-    return jsonResponse({ status: 'ok', config: cfg });
+    return jsonResponse({ status: 'ok', config: maskStockConfig(cfg) });
   }
 
   // POST send — send immediately (test / manual), ignoring the interval gate.
