@@ -808,7 +808,7 @@
                     </div>
 
                     <div class="btn-group" style="margin-bottom:20px">
-                        <button class="btn btn-primary" onclick="loadDashboard()">
+                        <button class="btn btn-primary" onclick="loadDashboard(true)">
                             <span class="spinner"></span>
                             <span class="btn-text">↻ Refresh Status</span>
                         </button>
@@ -947,7 +947,7 @@
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="icon">🔑</span> All Keys</div>
-                            <button class="btn btn-primary" id="keysRefreshBtn" onclick="loadAllKeys()">
+                            <button class="btn btn-primary" id="keysRefreshBtn" onclick="loadAllKeys(true)">
                                 <span class="spinner"></span>
                                 <span class="btn-text">↻ Refresh</span>
                             </button>
@@ -1249,9 +1249,41 @@
             }
         }
 
-        // GET with query params
-        async function apiGet(path, params = null, timeoutMs = 30000) {
-            return api('GET', path, params, timeoutMs);
+        // Short-lived cache + in-flight de-duplication for idempotent GET reads.
+        // Navigating between tabs/pages and overlapping loaders would otherwise
+        // re-hit the upstream API for the same data; here a result is reused for
+        // GET_CACHE_TTL ms and concurrent identical requests share one call.
+        // Pass { fresh: true } to bypass the cache (used by the explicit Refresh
+        // buttons and reloads after a key is created/activated).
+        const GET_CACHE_TTL = 15000;
+        const getCache = new Map();   // key -> { time, res }
+        const getInflight = new Map(); // key -> Promise
+
+        function getCacheKey(path, params) {
+            return params ? `${path}?${new URLSearchParams(params)}` : path;
+        }
+
+        // GET with query params (cached + de-duped)
+        async function apiGet(path, params = null, timeoutMs = 30000, { fresh = false } = {}) {
+            const key = getCacheKey(path, params);
+
+            if (!fresh) {
+                const hit = getCache.get(key);
+                if (hit && Date.now() - hit.time < GET_CACHE_TTL) return hit.res;
+                const pending = getInflight.get(key);
+                if (pending) return pending;
+            }
+
+            const p = api('GET', path, params, timeoutMs)
+                .then(res => {
+                    // Only cache successful responses so transient errors aren't sticky.
+                    if (res && res.ok) getCache.set(key, { time: Date.now(), res });
+                    return res;
+                })
+                .finally(() => { if (getInflight.get(key) === p) getInflight.delete(key); });
+
+            getInflight.set(key, p);
+            return p;
         }
 
         // ── Toast notifications ──
@@ -1422,12 +1454,12 @@
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         //  DASHBOARD
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        async function loadDashboard() {
+        async function loadDashboard(fresh = false) {
             try {
                 const [statusRes, accountsRes, stockRes] = await Promise.all([
-                    apiGet('/api/v1/status'),
-                    apiGet('/api/v1/accounts'),
-                    apiGet('/api/v1/stock'),
+                    apiGet('/api/v1/status', null, 30000, { fresh }),
+                    apiGet('/api/v1/accounts', null, 30000, { fresh }),
+                    apiGet('/api/v1/stock', null, 30000, { fresh }),
                 ]);
 
                 if (statusRes.ok) {
@@ -1551,7 +1583,7 @@
                 const r = await api('POST', '/api/v1/create_keys', { account_type: type, amount });
                 showOutput('createKeys', r.data, r.ok);
                 toast(r.ok ? `Created ${r.data.keys?.length || 0} keys` : (r.data.message || 'Failed'), r.ok ? 'success' : 'error');
-                if (r.ok) loadAllKeys();
+                if (r.ok) loadAllKeys(true);
             } catch (err) {
                 toast('Error: ' + err.message, 'error');
             }
@@ -1611,18 +1643,18 @@
         }
 
         // Build the combined list: activations (history) + unactivated (per type).
-        async function loadAllKeys() {
+        async function loadAllKeys(fresh = false) {
             setLoading('keysRefreshBtn', true);
             try {
                 await populateDropdowns();
 
                 const tasks = [
-                    apiGet('/api/v1/history_keys', { amount: 100 })
+                    apiGet('/api/v1/history_keys', { amount: 100 }, 30000, { fresh })
                         .then(r => ({ kind: 'activated', r })).catch(() => null),
                 ];
                 (accountTypes || []).forEach(t => {
                     tasks.push(
-                        apiGet('/api/v1/unactivated_keys', { account_type: t })
+                        apiGet('/api/v1/unactivated_keys', { account_type: t }, 30000, { fresh })
                             .then(r => ({ kind: 'unactivated', type: t, r })).catch(() => null)
                     );
                 });
