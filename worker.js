@@ -278,7 +278,10 @@ async function handleSellAuthWebhook(request, env) {
 
 const DEFAULT_STOCK_CONFIG = {
   enabled: false,
+  // Legacy single webhook (migrated into `webhooks` on read). Kept for back-compat.
   webhookUrl: '',
+  // One entry per reseller destination: { id, name, url, enabled }.
+  webhooks: [],
   intervalMinutes: 60,
   username: 'Stock alert',
   avatarUrl: '',
@@ -317,7 +320,22 @@ async function getStockConfig(env) {
   } catch {
     return { ...DEFAULT_STOCK_CONFIG };
   }
-  return { ...DEFAULT_STOCK_CONFIG, ...parsed };
+  const cfg = { ...DEFAULT_STOCK_CONFIG, ...parsed };
+  // Migrate a legacy single webhook into the webhooks[] list.
+  if (!Array.isArray(cfg.webhooks)) cfg.webhooks = [];
+  if (!cfg.webhooks.length && cfg.webhookUrl) {
+    cfg.webhooks = [{ id: 'legacy', name: 'Default', url: cfg.webhookUrl, enabled: true }];
+  }
+  cfg.webhookUrl = '';
+  return cfg;
+}
+
+function newWebhookId() {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return 'wh_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
 }
 
 async function saveStockConfig(env, config) {
@@ -328,10 +346,26 @@ async function saveStockConfig(env, config) {
 function sanitizeStockConfig(input, previous) {
   const cfg = { ...DEFAULT_STOCK_CONFIG, ...previous };
   if (typeof input.enabled === 'boolean') cfg.enabled = input.enabled;
-  // Only overwrite the webhook when a non-empty value is provided, so saving
-  // from the panel with the (masked) field left blank keeps the existing one.
-  if (typeof input.webhookUrl === 'string' && input.webhookUrl.trim()) {
-    cfg.webhookUrl = input.webhookUrl.trim();
+
+  // Reseller webhooks. Each entry: { id, name, url, enabled }. A blank url on an
+  // existing entry (matched by id) keeps the stored url — so the masked panel
+  // never wipes a webhook it can't read back.
+  if (Array.isArray(input.webhooks)) {
+    const prevById = new Map((previous && previous.webhooks ? previous.webhooks : []).map((w) => [w.id, w]));
+    cfg.webhooks = input.webhooks
+      .map((w) => {
+        const id = typeof w.id === 'string' && w.id ? w.id : newWebhookId();
+        const incomingUrl = typeof w.url === 'string' ? w.url.trim() : '';
+        const prev = prevById.get(id);
+        const url = incomingUrl || (prev ? prev.url : '');
+        return {
+          id,
+          name: typeof w.name === 'string' ? w.name.slice(0, 80) : '',
+          url,
+          enabled: typeof w.enabled === 'boolean' ? w.enabled : true,
+        };
+      })
+      .filter((w) => w.url || w.name);
   }
   if (input.intervalMinutes != null) {
     const n = Math.round(Number(input.intervalMinutes));
@@ -369,13 +403,18 @@ function sanitizeStockConfig(input, previous) {
   return cfg;
 }
 
-// Return the config with the webhook URL masked, so an open panel never
-// exposes the full Discord webhook (a credential) to the public.
+// Return the config with every webhook URL masked, so an open panel never
+// exposes the Discord webhooks (credentials) to the public.
 function maskStockConfig(cfg) {
-  const url = cfg.webhookUrl || '';
   const masked = { ...cfg, webhookUrl: '' };
-  masked.webhookSet = !!url;
-  masked.webhookHint = url ? '…' + url.slice(-6) : '';
+  masked.webhooks = (cfg.webhooks || []).map((w) => ({
+    id: w.id,
+    name: w.name || '',
+    enabled: w.enabled !== false,
+    url: '',
+    urlSet: !!w.url,
+    urlHint: w.url ? '…' + w.url.slice(-6) : '',
+  }));
   return masked;
 }
 
@@ -491,12 +530,12 @@ function buildStockEmbed(config, stock) {
   return embed;
 }
 
-async function sendDiscordWebhook(config, embed) {
+async function postToWebhook(config, url, embed) {
   const payload = { embeds: [embed] };
   if (config.username) payload.username = config.username;
   if (config.avatarUrl) payload.avatar_url = config.avatarUrl;
 
-  const res = await fetch(config.webhookUrl, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -516,8 +555,9 @@ async function runStockBot(env, { force }) {
     if (!force && !config.enabled) {
       return { sent: false, skipped: true, reason: 'disabled' };
     }
-    if (!config.webhookUrl) {
-      return { sent: false, skipped: true, reason: 'no-webhook', error: force ? 'No Discord webhook URL configured.' : undefined };
+    const targets = (config.webhooks || []).filter((w) => w.enabled !== false && w.url);
+    if (!targets.length) {
+      return { sent: false, skipped: true, reason: 'no-webhook', error: force ? 'No enabled webhooks with a URL configured.' : undefined };
     }
     if (!(config.groups || []).length) {
       return { sent: false, skipped: true, reason: 'no-groups', error: force ? 'No products configured to display.' : undefined };
@@ -532,11 +572,33 @@ async function runStockBot(env, { force }) {
 
     const stock = await fetchNfaStock(env);
     const embed = buildStockEmbed(config, stock);
-    await sendDiscordWebhook(config, embed);
 
-    config.lastSentAt = Date.now();
-    await saveStockConfig(env, config);
-    return { sent: true, skipped: false };
+    // Deliver to every enabled webhook; collect per-target results.
+    const results = await Promise.all(targets.map(async (w) => {
+      try {
+        await postToWebhook(config, w.url, embed);
+        return { name: w.name || w.id, ok: true };
+      } catch (err) {
+        return { name: w.name || w.id, ok: false, error: err.message };
+      }
+    }));
+
+    const delivered = results.filter((r) => r.ok).length;
+    const failed = results.filter((r) => !r.ok);
+
+    if (delivered > 0) {
+      config.lastSentAt = Date.now();
+      await saveStockConfig(env, config);
+    }
+
+    return {
+      sent: delivered > 0,
+      skipped: false,
+      delivered,
+      failed: failed.length,
+      results,
+      error: delivered === 0 && failed.length ? failed.map((f) => `${f.name}: ${f.error}`).join('; ') : undefined,
+    };
   } catch (err) {
     return { sent: false, skipped: false, error: err.message };
   }
