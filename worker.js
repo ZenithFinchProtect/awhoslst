@@ -11,6 +11,10 @@ const ALLOWED_ORIGINS = new Set(['*']);
 // Configure this URL in SellAuth: Product → Delivery → Dynamic.
 const SELLAUTH_WEBHOOK_PATH = '/webhook/sellauth';
 
+// Stock Discord bot — config API + KV key.
+const STOCK_BOT_PREFIX = '/api/stock-bot/';
+const STOCK_BOT_CONFIG_KEY = 'config';
+
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -28,6 +32,11 @@ export default {
     // --- SellAuth Dynamic Delivery webhook ---
     if (url.pathname === SELLAUTH_WEBHOOK_PATH) {
       return handleSellAuthWebhook(request, env);
+    }
+
+    // --- Stock Discord bot config/control API ---
+    if (url.pathname.startsWith(STOCK_BOT_PREFIX)) {
+      return handleStockBotApi(request, env, url);
     }
 
     // --- Serve Static Assets ---
@@ -92,6 +101,12 @@ export default {
         headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
       });
     }
+  },
+
+  // Cron trigger — fires every minute (see wrangler.toml). Posts the stock
+  // embed to Discord only when the configured interval has elapsed.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runStockBot(env, { force: false }));
   },
 };
 
@@ -251,4 +266,272 @@ async function handleSellAuthWebhook(request, env) {
 
   // Success: one deliverable per line.
   return plain(200, keys.join('\n'));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Stock Discord bot
+//
+//  A scheduled worker posts a "Stock Update Alert" embed (matching the design
+//  in the panel) to a Discord webhook. Everything is configured from the panel
+//  and stored in the STOCK_BOT KV namespace.
+// ───────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_STOCK_CONFIG = {
+  enabled: false,
+  webhookUrl: '',
+  intervalMinutes: 60,
+  username: 'Stock alert',
+  avatarUrl: '',
+  title: '📊 Stock Update Alert',
+  note: 'If the stock exceeds 5, it will be displayed as 5',
+  cap: 5, // 0 / null = no cap
+  color: 3447003, // Discord blurple-ish blue
+  showTimestamp: true,
+  groups: [],
+  lastSentAt: 0,
+};
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Panel-Auth',
+    },
+  });
+}
+
+function stockBotConfigured(env) {
+  return env.STOCK_BOT && typeof env.STOCK_BOT.get === 'function';
+}
+
+async function getStockConfig(env) {
+  if (!stockBotConfigured(env)) return { ...DEFAULT_STOCK_CONFIG };
+  const raw = await env.STOCK_BOT.get(STOCK_BOT_CONFIG_KEY);
+  if (!raw) return { ...DEFAULT_STOCK_CONFIG };
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ...DEFAULT_STOCK_CONFIG };
+  }
+  return { ...DEFAULT_STOCK_CONFIG, ...parsed };
+}
+
+async function saveStockConfig(env, config) {
+  await env.STOCK_BOT.put(STOCK_BOT_CONFIG_KEY, JSON.stringify(config));
+}
+
+// Sanitize/normalize a config object coming from the panel before saving.
+function sanitizeStockConfig(input, previous) {
+  const cfg = { ...DEFAULT_STOCK_CONFIG, ...previous };
+  if (typeof input.enabled === 'boolean') cfg.enabled = input.enabled;
+  if (typeof input.webhookUrl === 'string') cfg.webhookUrl = input.webhookUrl.trim();
+  if (input.intervalMinutes != null) {
+    const n = Math.round(Number(input.intervalMinutes));
+    cfg.intervalMinutes = Number.isFinite(n) && n >= 1 ? n : DEFAULT_STOCK_CONFIG.intervalMinutes;
+  }
+  if (typeof input.username === 'string') cfg.username = input.username.slice(0, 80);
+  if (typeof input.avatarUrl === 'string') cfg.avatarUrl = input.avatarUrl.trim();
+  if (typeof input.title === 'string') cfg.title = input.title.slice(0, 256);
+  if (typeof input.note === 'string') cfg.note = input.note.slice(0, 2048);
+  if (input.cap != null) {
+    const c = Math.round(Number(input.cap));
+    cfg.cap = Number.isFinite(c) && c > 0 ? c : 0;
+  }
+  if (input.color != null) {
+    const col = Math.round(Number(input.color));
+    if (Number.isFinite(col) && col >= 0 && col <= 0xffffff) cfg.color = col;
+  }
+  if (typeof input.showTimestamp === 'boolean') cfg.showTimestamp = input.showTimestamp;
+  if (Array.isArray(input.groups)) {
+    cfg.groups = input.groups
+      .map((g) => ({
+        title: typeof g.title === 'string' ? g.title.slice(0, 256) : '',
+        emoji: typeof g.emoji === 'string' ? g.emoji.slice(0, 32) : '',
+        rows: Array.isArray(g.rows)
+          ? g.rows
+              .map((r) => ({
+                label: typeof r.label === 'string' ? r.label.slice(0, 200) : '',
+                key: typeof r.key === 'string' ? r.key : '',
+              }))
+              .filter((r) => r.key || r.label)
+          : [],
+      }))
+      .filter((g) => g.title || g.rows.length);
+  }
+  return cfg;
+}
+
+// Optional panel auth — mirrors the Pages function: enforced only when
+// PANEL_AUTH_TOKEN is configured.
+function panelAuthorized(request, env) {
+  if (!env.PANEL_AUTH_TOKEN) return true;
+  return (request.headers.get('X-Panel-Auth') || '') === env.PANEL_AUTH_TOKEN;
+}
+
+async function handleStockBotApi(request, env, url) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders(null) });
+  }
+
+  if (!panelAuthorized(request, env)) {
+    return jsonResponse({ status: 'error', message: 'Invalid panel authentication' }, 403);
+  }
+
+  if (!stockBotConfigured(env)) {
+    return jsonResponse({
+      status: 'error',
+      message: 'STOCK_BOT KV namespace is not bound. Create it and set its id in wrangler.toml.',
+    }, 500);
+  }
+
+  const action = url.pathname.slice(STOCK_BOT_PREFIX.length).replace(/\/+$/, '');
+
+  // GET config
+  if (action === 'config' && request.method === 'GET') {
+    const cfg = await getStockConfig(env);
+    return jsonResponse({ status: 'ok', config: cfg });
+  }
+
+  // POST config — save
+  if (action === 'config' && request.method === 'POST') {
+    let input;
+    try {
+      input = await request.json();
+    } catch {
+      return jsonResponse({ status: 'error', message: 'Invalid JSON body' }, 400);
+    }
+    const previous = await getStockConfig(env);
+    const cfg = sanitizeStockConfig(input, previous);
+    await saveStockConfig(env, cfg);
+    return jsonResponse({ status: 'ok', config: cfg });
+  }
+
+  // POST send — send immediately (test / manual), ignoring the interval gate.
+  if (action === 'send' && request.method === 'POST') {
+    const result = await runStockBot(env, { force: true });
+    const status = result.error ? 502 : 200;
+    return jsonResponse({ status: result.error ? 'error' : 'ok', ...result }, status);
+  }
+
+  return jsonResponse({ status: 'error', message: 'Unknown stock-bot action' }, 404);
+}
+
+// Fetch the live stock map from the NFA API using the server-side key.
+async function fetchNfaStock(env) {
+  if (!env.NFA_API_KEY) throw new Error('NFA_API_KEY is not set');
+  const res = await fetch(`${NFA_ORIGIN}/api/v1/stock`, {
+    method: 'GET',
+    headers: {
+      'X-API-Key': env.NFA_API_KEY,
+      Accept: 'application/json',
+    },
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!res.ok) {
+    const msg = (data && data.message) || text || `HTTP ${res.status}`;
+    throw new Error('Failed to fetch stock: ' + msg);
+  }
+  return (data && data.stock) || {};
+}
+
+// Resolve a stock count for a key, with exact then case-insensitive matching.
+function lookupStock(stock, key) {
+  if (key in stock) return Number(stock[key]) || 0;
+  const wanted = String(key).trim().toLowerCase();
+  for (const [k, v] of Object.entries(stock)) {
+    if (k.trim().toLowerCase() === wanted) return Number(v) || 0;
+  }
+  return 0;
+}
+
+function displayCount(count, cap) {
+  return cap && cap > 0 && count > cap ? cap : count;
+}
+
+// Build the Discord embed payload from config + live stock.
+function buildStockEmbed(config, stock) {
+  const fields = [];
+  for (const group of config.groups || []) {
+    const lines = (group.rows || []).map((row) => {
+      const n = displayCount(lookupStock(stock, row.key), config.cap);
+      const label = row.label || row.key;
+      return `${label}: **Stock: ${n}**`;
+    });
+    const name = `${group.emoji ? group.emoji + ' ' : ''}${group.title || '\u200b'}`.slice(0, 256);
+    fields.push({
+      name,
+      value: (lines.join('\n') || '\u200b').slice(0, 1024),
+      inline: false,
+    });
+  }
+
+  const embed = {
+    title: config.title || 'Stock Update Alert',
+    color: config.color ?? DEFAULT_STOCK_CONFIG.color,
+    fields: fields.slice(0, 25),
+  };
+  if (config.note) embed.description = config.note;
+  if (config.showTimestamp) embed.timestamp = new Date().toISOString();
+  return embed;
+}
+
+async function sendDiscordWebhook(config, embed) {
+  const payload = { embeds: [embed] };
+  if (config.username) payload.username = config.username;
+  if (config.avatarUrl) payload.avatar_url = config.avatarUrl;
+
+  const res = await fetch(config.webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Discord webhook returned ${res.status}: ${text.slice(0, 300)}`);
+  }
+}
+
+// Core runner. `force` bypasses the enabled flag and interval gate (used by
+// the panel's "Send test now" button).
+async function runStockBot(env, { force }) {
+  try {
+    const config = await getStockConfig(env);
+
+    if (!force && !config.enabled) {
+      return { sent: false, skipped: true, reason: 'disabled' };
+    }
+    if (!config.webhookUrl) {
+      return { sent: false, skipped: true, reason: 'no-webhook', error: force ? 'No Discord webhook URL configured.' : undefined };
+    }
+    if (!(config.groups || []).length) {
+      return { sent: false, skipped: true, reason: 'no-groups', error: force ? 'No products configured to display.' : undefined };
+    }
+
+    if (!force) {
+      const elapsed = Date.now() - (config.lastSentAt || 0);
+      if (elapsed < config.intervalMinutes * 60 * 1000) {
+        return { sent: false, skipped: true, reason: 'interval-not-elapsed' };
+      }
+    }
+
+    const stock = await fetchNfaStock(env);
+    const embed = buildStockEmbed(config, stock);
+    await sendDiscordWebhook(config, embed);
+
+    config.lastSentAt = Date.now();
+    await saveStockConfig(env, config);
+    return { sent: true, skipped: false };
+  } catch (err) {
+    return { sent: false, skipped: false, error: err.message };
+  }
 }
