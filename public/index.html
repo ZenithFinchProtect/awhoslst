@@ -778,6 +778,7 @@
                         <div class="panel-tab" onclick="showPanelTab('panelActivate', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Activate</div>
                         <div class="panel-tab" onclick="showPanelTab('panelKeys', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Keys</div>
                         <div class="panel-tab" onclick="showPanelTab('panelTools', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Tools</div>
+                        <div class="panel-tab" onclick="showPanelTab('panelStockBot', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Stock Bot</div>
                     </div>
 
                 <!-- Dashboard -->
@@ -1075,6 +1076,98 @@
                     </div>
                 </div>
 
+                <!-- Stock Bot -->
+                <div id="panelStockBot" class="panel-section" style="display:none">
+                    <div class="section-header">
+                        <h2 class="section-title">Stock Bot</h2>
+                        <p class="section-desc">Post a live stock embed to a Discord webhook on a schedule</p>
+                    </div>
+
+                    <div class="grid-2">
+                        <!-- Settings -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title"><span class="icon">⚙️</span> Settings</div>
+                            </div>
+
+                            <div class="form-group" style="display:flex;align-items:center;gap:10px">
+                                <input type="checkbox" id="sbEnabled" style="width:auto;margin:0">
+                                <label class="form-label" for="sbEnabled" style="margin:0">Enabled (send automatically on schedule)</label>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Discord Webhook URL</label>
+                                <input type="text" class="form-input" id="sbWebhookUrl" placeholder="https://discord.com/api/webhooks/...">
+                            </div>
+
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Update every (minutes)</label>
+                                    <input type="number" class="form-input" id="sbInterval" min="1" value="60">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Cap stock display at (0 = no cap)</label>
+                                    <input type="number" class="form-input" id="sbCap" min="0" value="5">
+                                </div>
+                            </div>
+
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Bot name</label>
+                                    <input type="text" class="form-input" id="sbUsername" placeholder="Stock alert">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Avatar URL (optional)</label>
+                                    <input type="text" class="form-input" id="sbAvatarUrl" placeholder="https://...">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Embed title</label>
+                                <input type="text" class="form-input" id="sbTitle" placeholder="📊 Stock Update Alert">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Note / description</label>
+                                <input type="text" class="form-input" id="sbNote" placeholder="If the stock exceeds 5, it will be displayed as 5">
+                            </div>
+
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="sbSaveBtn" onclick="saveStockBotConfig()">
+                                    <span class="spinner"></span>
+                                    <span class="btn-text">💾 Save Config</span>
+                                </button>
+                                <button class="btn btn-secondary" id="sbSendBtn" onclick="sendStockTest()">
+                                    <span class="spinner"></span>
+                                    <span class="btn-text">📨 Send Now (test)</span>
+                                </button>
+                                <button class="btn btn-secondary" onclick="loadStockBotConfig()">↻ Reload</button>
+                            </div>
+
+                            <div class="output" id="sbOutput">
+                                <div class="output-header">
+                                    <span class="output-title">Result</span>
+                                    <span class="output-status" id="sbStatus"></span>
+                                </div>
+                                <div class="output-body" id="sbBody"></div>
+                            </div>
+                        </div>
+
+                        <!-- Products / groups -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title"><span class="icon">📦</span> Products to show</div>
+                                <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="addStockGroup()">+ Add product</button>
+                            </div>
+                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+                                Each product is one section in the embed. Add rows under it and pick the live stock key for each row.
+                                Refresh the dashboard once so the stock-key list is populated.
+                            </p>
+                            <div id="sbGroups"></div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
         </div>
@@ -1088,6 +1181,9 @@
 
         // Cache account types for dropdowns
         let accountTypes = [];
+
+        // Cache live stock keys (names) for the Stock Bot row pickers
+        let stockKeys = [];
 
         // ── Auth ──
         function getAuth() {
@@ -1191,6 +1287,7 @@
             // Auto-populate dropdowns / load data for the opened tab
             if (tabId === 'panelActivate') populateDropdowns();
             if (tabId === 'panelKeys') loadAllKeys();
+            if (tabId === 'panelStockBot') initStockBot();
         }
 
         // ── Show response in output panel ──
@@ -1366,6 +1463,7 @@
                 }
 
                 if (stockRes.ok && stockRes.data.stock) {
+                    stockKeys = Object.keys(stockRes.data.stock);
                     let html = '<table class="data-table"><tr><th>Account Type</th><th>In Stock</th></tr>';
                     Object.entries(stockRes.data.stock).forEach(([name, count]) => {
                         const color = count > 0 ? 'var(--success)' : 'var(--error)';
@@ -1857,6 +1955,149 @@
             } catch (err) {
                 toast('Failed to decode EXE: ' + err.message, 'error');
             }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  STOCK BOT
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        let stockGroups = [];     // working copy of config.groups
+        let stockBotLoaded = false;
+
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        }
+
+        // Build the <option> list for a row's stock-key picker.
+        function stockKeyOptions(selected) {
+            const opts = ['<option value="">— select stock key —</option>'];
+            const known = new Set(stockKeys);
+            if (selected && !known.has(selected)) {
+                opts.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} (not in live stock)</option>`);
+            }
+            stockKeys.forEach(k => {
+                const sel = k === selected ? ' selected' : '';
+                opts.push(`<option value="${escapeHtml(k)}"${sel}>${escapeHtml(k)}</option>`);
+            });
+            return opts.join('');
+        }
+
+        // Render the working stockGroups into the #sbGroups container.
+        function renderStockGroups() {
+            const container = document.getElementById('sbGroups');
+            if (!stockGroups.length) {
+                container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No products yet. Click "+ Add product" to start.</p>';
+                return;
+            }
+            container.innerHTML = stockGroups.map((g, gi) => {
+                const rows = (g.rows || []).map((r, ri) => `
+                    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+                        <input type="text" class="form-input" style="flex:0 0 38%" placeholder="Row label (e.g. HQ 0 - 100 Hours)"
+                            value="${escapeHtml(r.label)}" oninput="updateStockRow(${gi},${ri},'label',this.value)">
+                        <select class="form-input" style="flex:1" onchange="updateStockRow(${gi},${ri},'key',this.value)">
+                            ${stockKeyOptions(r.key)}
+                        </select>
+                        <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeStockRow(${gi},${ri})">✕</button>
+                    </div>
+                `).join('');
+                return `
+                    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--bg-secondary)">
+                        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+                            <input type="text" class="form-input" style="flex:0 0 80px" placeholder="Emoji"
+                                value="${escapeHtml(g.emoji)}" oninput="updateStockGroup(${gi},'emoji',this.value)">
+                            <input type="text" class="form-input" style="flex:1" placeholder="Product name (e.g. Rust HQ)"
+                                value="${escapeHtml(g.title)}" oninput="updateStockGroup(${gi},'title',this.value)">
+                            <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeStockGroup(${gi})">Delete</button>
+                        </div>
+                        ${rows}
+                        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;margin-top:4px" onclick="addStockRow(${gi})">+ Add row</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function addStockGroup() {
+            stockGroups.push({ title: '', emoji: '', rows: [{ label: 'Account', key: '' }] });
+            renderStockGroups();
+        }
+        function removeStockGroup(gi) { stockGroups.splice(gi, 1); renderStockGroups(); }
+        function updateStockGroup(gi, field, value) { stockGroups[gi][field] = value; }
+        function addStockRow(gi) { stockGroups[gi].rows.push({ label: '', key: '' }); renderStockGroups(); }
+        function removeStockRow(gi, ri) { stockGroups[gi].rows.splice(ri, 1); renderStockGroups(); }
+        function updateStockRow(gi, ri, field, value) { stockGroups[gi].rows[ri][field] = value; }
+
+        // Load live stock keys (for the row pickers) then the saved config.
+        async function initStockBot() {
+            try {
+                const r = await apiGet('/api/v1/stock');
+                if (r.ok && r.data.stock) stockKeys = Object.keys(r.data.stock);
+            } catch (e) { /* keys are optional; free-typed keys still work */ }
+            if (!stockBotLoaded) await loadStockBotConfig();
+            else renderStockGroups();
+        }
+
+        async function loadStockBotConfig() {
+            try {
+                const r = await apiGet('/api/stock-bot/config');
+                if (!r.ok) { toast('Failed to load stock bot config: ' + (r.data?.message || r.status), 'error'); return; }
+                const c = r.data.config || {};
+                document.getElementById('sbEnabled').checked = !!c.enabled;
+                document.getElementById('sbWebhookUrl').value = c.webhookUrl || '';
+                document.getElementById('sbInterval').value = c.intervalMinutes ?? 60;
+                document.getElementById('sbCap').value = c.cap ?? 0;
+                document.getElementById('sbUsername').value = c.username || '';
+                document.getElementById('sbAvatarUrl').value = c.avatarUrl || '';
+                document.getElementById('sbTitle').value = c.title || '';
+                document.getElementById('sbNote').value = c.note || '';
+                stockGroups = Array.isArray(c.groups) ? JSON.parse(JSON.stringify(c.groups)) : [];
+                stockBotLoaded = true;
+                renderStockGroups();
+            } catch (err) {
+                toast('Failed to load stock bot config: ' + err.message, 'error');
+            }
+        }
+
+        function collectStockConfig() {
+            return {
+                enabled: document.getElementById('sbEnabled').checked,
+                webhookUrl: document.getElementById('sbWebhookUrl').value.trim(),
+                intervalMinutes: parseInt(document.getElementById('sbInterval').value, 10) || 60,
+                cap: parseInt(document.getElementById('sbCap').value, 10) || 0,
+                username: document.getElementById('sbUsername').value,
+                avatarUrl: document.getElementById('sbAvatarUrl').value.trim(),
+                title: document.getElementById('sbTitle').value,
+                note: document.getElementById('sbNote').value,
+                groups: stockGroups,
+            };
+        }
+
+        async function saveStockBotConfig() {
+            setLoading('sbSaveBtn', true);
+            try {
+                const r = await api('POST', '/api/stock-bot/config', collectStockConfig());
+                showOutput('sb', r.data, r.ok);
+                if (r.ok) { stockBotLoaded = false; toast('Stock bot config saved', 'success'); }
+                else toast('Save failed: ' + (r.data?.message || r.status), 'error');
+            } catch (err) {
+                toast('Save failed: ' + err.message, 'error');
+            }
+            setLoading('sbSaveBtn', false);
+        }
+
+        async function sendStockTest() {
+            setLoading('sbSendBtn', true);
+            try {
+                // Save first so the test uses the current form values.
+                await api('POST', '/api/stock-bot/config', collectStockConfig());
+                const r = await api('POST', '/api/stock-bot/send', {}, 60000);
+                showOutput('sb', r.data, r.ok && r.data.sent);
+                if (r.ok && r.data.sent) toast('Sent to Discord', 'success');
+                else toast('Not sent: ' + (r.data?.error || r.data?.reason || r.data?.message || 'unknown'), 'error');
+            } catch (err) {
+                toast('Send failed: ' + err.message, 'error');
+            }
+            setLoading('sbSendBtn', false);
         }
 
         // ── Hash routing ──

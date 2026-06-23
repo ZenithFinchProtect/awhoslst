@@ -11,3 +11,16 @@ routes = [
 [assets]
 directory = "./public"
 binding = "ASSETS"
+
+# ── Stock Discord bot ──
+# Runs every minute; the scheduled handler only posts when the interval
+# configured in the panel has elapsed (so any interval, e.g. 60 min, works).
+[triggers]
+crons = ["* * * * *"]
+
+# KV namespace that stores the stock-bot config (webhook URL, interval, groups…).
+# Create it once with:  wrangler kv namespace create STOCK_BOT
+# then paste the returned id below (and a preview_id for `wrangler dev`).
+[[kv_namespaces]]
+binding = "STOCK_BOT"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
