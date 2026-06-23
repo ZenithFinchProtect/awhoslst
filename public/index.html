@@ -340,6 +340,16 @@
         .btn.loading .spinner { display: inline-block; }
         .btn.loading .btn-text { opacity: 0.7; }
 
+        .spinner-inline {
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: inline-block;
+        }
+
         @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ── Output / Response ── */
@@ -754,7 +764,12 @@
                             <span class="spinner"></span>
                             <span class="btn-text" id="customerActionText">Submit</span>
                         </button>
-                        
+
+                        <div id="customerProgress" style="display:none; margin-top:14px; padding:12px 14px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); font-size:13px; color:var(--text-secondary); line-height:1.5;">
+                            <span class="spinner-inline" style="vertical-align:middle; margin-right:8px;"></span>
+                            <span id="customerProgressText">Working…</span>
+                        </div>
+
                         <div class="output" id="customerOutput" style="margin-top:16px;">
                             <div class="output-header">
                                 <span class="output-title">Result</span>
@@ -1908,10 +1923,11 @@
             currentModalAction = action;
             document.getElementById('customerKeyInput').value = '';
             document.getElementById('customerOutput').classList.remove('show');
+            setCustomerProgress(null);
             
             if (action === 'download') {
                 document.getElementById('modalTitle').textContent = 'Download Loader';
-                document.getElementById('modalDesc').textContent = 'Enter your key to download the loader. Re-downloads are free for valid keys.';
+                document.getElementById('modalDesc').textContent = 'Enter your key to download the loader. First-time keys are activated automatically (this can take up to 2 minutes). Re-downloads are free and instant.';
                 document.getElementById('customerActionText').textContent = 'Download Loader';
             } else {
                 document.getElementById('modalTitle').textContent = 'Activate Key';
@@ -1933,26 +1949,33 @@
             const btn = document.getElementById('customerActionBtn');
             btn.disabled = true;
             btn.classList.add('loading');
+            document.getElementById('customerOutput').classList.remove('show');
 
             try {
                 let r;
                 if (currentModalAction === 'download') {
                     // Build the loader for an already-activated key.
+                    setCustomerProgress('Preparing your loader…');
                     r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
 
                     // A freshly-generated key has no activation yet, so create_exe
                     // returns "Activation not found". Activate it once, then retry.
                     if (!r.ok && /activation not found/i.test(r.data?.message || '')) {
+                        setCustomerProgress('Activating your key — this can take up to 2 minutes. Please keep this window open…');
                         const act = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
                         if (act.ok) {
+                            setCustomerProgress('Activated! Building your loader…');
                             r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
                         } else {
                             r = act;
                         }
                     }
                 } else {
+                    setCustomerProgress('Activating your key — this can take up to 2 minutes. Please keep this window open…');
                     r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
                 }
+
+                setCustomerProgress(null);
 
                 const display = { ...r.data };
                 if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
@@ -1966,11 +1989,26 @@
                     toast(r.data.message || 'Action failed', 'error');
                 }
             } catch (err) {
+                setCustomerProgress(null);
                 toast('Error: ' + err.message, 'error');
             }
             
             btn.disabled = false;
             btn.classList.remove('loading');
+        }
+
+        // Show/hide the inline progress line in the customer modal.
+        // Pass a message to show it, or null to hide it.
+        function setCustomerProgress(message) {
+            const box = document.getElementById('customerProgress');
+            const text = document.getElementById('customerProgressText');
+            if (!box || !text) return;
+            if (message) {
+                text.textContent = message;
+                box.style.display = 'block';
+            } else {
+                box.style.display = 'none';
+            }
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
