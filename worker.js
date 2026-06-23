@@ -172,21 +172,35 @@ async function getValidAccountTypes(env) {
   }
 }
 
-// Tokenize a free-form name into a Set of lowercase tokens. Applied identically to
-// SellAuth names and to NFA keys so they tokenize consistently:
+// Canonicalize individual tokens so the same concept tokenizes identically on both
+// the SellAuth name and the NFA key side, smoothing over NFA's naming quirks:
+//   "h"/"hr"/"hrs" -> "hours"  (some keys use "1000h", others "..._hours")
+//   "inventory"    -> "inv"    (cs2_*_inventory vs rust_premium_*_inv)
+//   "knives"/etc.  -> "knifes" (NFA spells it "knifes" in cs2_knifes_gloves)
+function canonToken(t) {
+  if (t === 'hrs' || t === 'hr' || t === 'h') return 'hours';
+  if (t === 'inventory' || t === 'inventories' || t === 'inv') return 'inv';
+  if (t === 'knives' || t === 'knive' || t === 'knife' || t === 'knifes') return 'knifes';
+  return t;
+}
+
+// Tokenize a free-form name into a Set of canonical lowercase tokens. Applied
+// identically to SellAuth names and to NFA keys so they tokenize consistently:
 //   "Rust Temporary Account (0-250 Hours)" -> {rust,temporary,account,0,250,hours}
 //   "rust_0_250_hours"                      -> {rust,0,250,hours}
-// Letter<->digit boundaries are split ("10medals" -> "10","medals"; "15k" -> "15","k")
-// and "+" becomes "plus" so "7000+ Hours" matches "rust_7000_plus_hours".
+// "+" becomes "plus" ("7000+ Hours" -> rust_7000_plus_hours), an "Nd"/"N days"
+// suffix is split to "N d" (so "5 days" matches "..._5d"), and letter<->digit
+// boundaries are split ("10medals" -> "10","medals"; "1000h" -> "1000","hours").
 function nameTokens(str) {
   const norm = String(str || '')
     .toLowerCase()
     .replace(/\+/g, ' plus ')
+    .replace(/(\d+)\s*d(?:ays?)?\b/g, '$1 d ')
     .replace(/([a-z])([0-9])/g, '$1 $2')
     .replace(/([0-9])([a-z])/g, '$1 $2')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
-  return new Set(norm.split(/\s+/).filter(Boolean));
+  return new Set(norm.split(/\s+/).filter(Boolean).map(canonToken));
 }
 
 // Match a SellAuth product/variant name to a valid NFA account type.
