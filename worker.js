@@ -327,7 +327,31 @@ async function getStockConfig(env) {
     cfg.webhooks = [{ id: 'legacy', name: 'Default', url: cfg.webhookUrl, enabled: true }];
   }
   cfg.webhookUrl = '';
+  // Each webhook carries its own settings; fill any missing ones from the
+  // top-level config (which acts as the default template + legacy values), so
+  // existing single-setting webhooks keep the products/schedule they had.
+  cfg.webhooks = cfg.webhooks.map((w) => withWebhookDefaults(w, cfg));
   return cfg;
+}
+
+// Per-webhook setting fields. Each reseller webhook has its own copy of these.
+const WEBHOOK_SETTING_FIELDS = [
+  'intervalMinutes', 'username', 'avatarUrl', 'title', 'note', 'cap', 'color', 'showTimestamp',
+];
+
+// Fill any missing per-webhook settings from `defaults` (the top-level config).
+function withWebhookDefaults(w, defaults) {
+  const out = { ...w };
+  for (const f of WEBHOOK_SETTING_FIELDS) {
+    if (out[f] === undefined) out[f] = defaults[f];
+  }
+  if (!Array.isArray(out.groups)) {
+    out.groups = Array.isArray(defaults.groups)
+      ? defaults.groups.map((g) => ({ ...g, rows: (g.rows || []).map((r) => ({ ...r })) }))
+      : [];
+  }
+  if (typeof out.lastSentAt !== 'number') out.lastSentAt = 0;
+  return out;
 }
 
 function newWebhookId() {
@@ -342,14 +366,72 @@ async function saveStockConfig(env, config) {
   await env.STOCK_BOT.put(STOCK_BOT_CONFIG_KEY, JSON.stringify(config));
 }
 
+// Normalize a product-groups array (shared by global + per-webhook settings).
+function sanitizeGroups(groups) {
+  return groups
+    .map((g) => ({
+      title: typeof g.title === 'string' ? g.title.slice(0, 256) : '',
+      emoji: typeof g.emoji === 'string' ? g.emoji.slice(0, 32) : '',
+      rows: Array.isArray(g.rows)
+        ? g.rows
+            .map((r) => ({
+              label: typeof r.label === 'string' ? r.label.slice(0, 200) : '',
+              key: typeof r.key === 'string' ? r.key : '',
+            }))
+            .filter((r) => r.key || r.label)
+        : [],
+    }))
+    .filter((g) => g.title || g.rows.length);
+}
+
+// Validate the appearance/schedule/products settings shared by the top-level
+// config and each per-webhook entry. Missing/invalid fields fall back to `base`.
+function sanitizeSettings(input, base) {
+  const out = {
+    intervalMinutes: base.intervalMinutes,
+    username: base.username,
+    avatarUrl: base.avatarUrl,
+    title: base.title,
+    note: base.note,
+    cap: base.cap,
+    color: base.color,
+    showTimestamp: base.showTimestamp,
+    groups: Array.isArray(base.groups) ? base.groups : [],
+  };
+  if (input.intervalMinutes != null) {
+    const n = Math.round(Number(input.intervalMinutes));
+    out.intervalMinutes = Number.isFinite(n) && n >= 1 ? n : DEFAULT_STOCK_CONFIG.intervalMinutes;
+  }
+  if (typeof input.username === 'string') out.username = input.username.slice(0, 80);
+  if (typeof input.avatarUrl === 'string') out.avatarUrl = input.avatarUrl.trim();
+  if (typeof input.title === 'string') out.title = input.title.slice(0, 256);
+  if (typeof input.note === 'string') out.note = input.note.slice(0, 2048);
+  if (input.cap != null) {
+    const c = Math.round(Number(input.cap));
+    out.cap = Number.isFinite(c) && c > 0 ? c : 0;
+  }
+  if (input.color != null) {
+    const col = Math.round(Number(input.color));
+    if (Number.isFinite(col) && col >= 0 && col <= 0xffffff) out.color = col;
+  }
+  if (typeof input.showTimestamp === 'boolean') out.showTimestamp = input.showTimestamp;
+  if (Array.isArray(input.groups)) out.groups = sanitizeGroups(input.groups);
+  return out;
+}
+
 // Sanitize/normalize a config object coming from the panel before saving.
 function sanitizeStockConfig(input, previous) {
   const cfg = { ...DEFAULT_STOCK_CONFIG, ...previous };
   if (typeof input.enabled === 'boolean') cfg.enabled = input.enabled;
 
-  // Reseller webhooks. Each entry: { id, name, url, enabled }. A blank url on an
-  // existing entry (matched by id) keeps the stored url — so the masked panel
-  // never wipes a webhook it can't read back.
+  // Top-level settings are kept as the default template for newly added
+  // webhooks (and for legacy back-compat). The bot itself sends per-webhook.
+  Object.assign(cfg, sanitizeSettings(input, cfg));
+
+  // Reseller webhooks. Each entry carries its own full settings + products.
+  // A blank url on an existing entry (matched by id) keeps the stored url — so
+  // the masked panel never wipes a webhook it can't read back. lastSentAt is
+  // preserved per webhook so each schedule is independent.
   if (Array.isArray(input.webhooks)) {
     const prevById = new Map((previous && previous.webhooks ? previous.webhooks : []).map((w) => [w.id, w]));
     cfg.webhooks = input.webhooks
@@ -358,47 +440,19 @@ function sanitizeStockConfig(input, previous) {
         const incomingUrl = typeof w.url === 'string' ? w.url.trim() : '';
         const prev = prevById.get(id);
         const url = incomingUrl || (prev ? prev.url : '');
+        // Unspecified per-webhook settings fall back to the previous saved
+        // values for this id, or the top-level template for new webhooks.
+        const base = prev ? { ...DEFAULT_STOCK_CONFIG, ...prev } : { ...DEFAULT_STOCK_CONFIG, ...cfg };
         return {
           id,
           name: typeof w.name === 'string' ? w.name.slice(0, 80) : '',
           url,
           enabled: typeof w.enabled === 'boolean' ? w.enabled : true,
+          ...sanitizeSettings(w, base),
+          lastSentAt: prev && typeof prev.lastSentAt === 'number' ? prev.lastSentAt : 0,
         };
       })
       .filter((w) => w.url || w.name);
-  }
-  if (input.intervalMinutes != null) {
-    const n = Math.round(Number(input.intervalMinutes));
-    cfg.intervalMinutes = Number.isFinite(n) && n >= 1 ? n : DEFAULT_STOCK_CONFIG.intervalMinutes;
-  }
-  if (typeof input.username === 'string') cfg.username = input.username.slice(0, 80);
-  if (typeof input.avatarUrl === 'string') cfg.avatarUrl = input.avatarUrl.trim();
-  if (typeof input.title === 'string') cfg.title = input.title.slice(0, 256);
-  if (typeof input.note === 'string') cfg.note = input.note.slice(0, 2048);
-  if (input.cap != null) {
-    const c = Math.round(Number(input.cap));
-    cfg.cap = Number.isFinite(c) && c > 0 ? c : 0;
-  }
-  if (input.color != null) {
-    const col = Math.round(Number(input.color));
-    if (Number.isFinite(col) && col >= 0 && col <= 0xffffff) cfg.color = col;
-  }
-  if (typeof input.showTimestamp === 'boolean') cfg.showTimestamp = input.showTimestamp;
-  if (Array.isArray(input.groups)) {
-    cfg.groups = input.groups
-      .map((g) => ({
-        title: typeof g.title === 'string' ? g.title.slice(0, 256) : '',
-        emoji: typeof g.emoji === 'string' ? g.emoji.slice(0, 32) : '',
-        rows: Array.isArray(g.rows)
-          ? g.rows
-              .map((r) => ({
-                label: typeof r.label === 'string' ? r.label.slice(0, 200) : '',
-                key: typeof r.key === 'string' ? r.key : '',
-              }))
-              .filter((r) => r.key || r.label)
-          : [],
-      }))
-      .filter((g) => g.title || g.rows.length);
   }
   return cfg;
 }
@@ -414,6 +468,16 @@ function maskStockConfig(cfg) {
     url: '',
     urlSet: !!w.url,
     urlHint: w.url ? '…' + w.url.slice(-6) : '',
+    intervalMinutes: w.intervalMinutes,
+    username: w.username || '',
+    avatarUrl: w.avatarUrl || '',
+    title: w.title || '',
+    note: w.note || '',
+    cap: w.cap,
+    color: w.color,
+    showTimestamp: w.showTimestamp !== false,
+    groups: w.groups || [],
+    lastSentAt: w.lastSentAt || 0,
   }));
   return masked;
 }
@@ -456,8 +520,12 @@ async function handleStockBotApi(request, env, url) {
   }
 
   // POST send — send immediately (test / manual), ignoring the interval gate.
+  // Optional body { webhookId } limits the test to a single webhook.
   if (action === 'send' && request.method === 'POST') {
-    const result = await runStockBot(env, { force: true });
+    let body = {};
+    try { body = await request.json(); } catch { body = {}; }
+    const webhookId = typeof body.webhookId === 'string' && body.webhookId ? body.webhookId : undefined;
+    const result = await runStockBot(env, { force: true, webhookId });
     const status = result.error ? 502 : 200;
     return jsonResponse({ status: result.error ? 'error' : 'ok', ...result }, status);
   }
@@ -546,48 +614,68 @@ async function postToWebhook(config, url, embed) {
   }
 }
 
-// Core runner. `force` bypasses the enabled flag and interval gate (used by
-// the panel's "Send test now" button).
-async function runStockBot(env, { force }) {
+// Core runner. `force` bypasses the enabled flag and per-webhook interval gate
+// (used by the panel's "Send test now" button). `webhookId` limits to one
+// webhook. Each webhook has its own schedule, appearance, and product list.
+async function runStockBot(env, { force, webhookId }) {
   try {
     const config = await getStockConfig(env);
 
     if (!force && !config.enabled) {
       return { sent: false, skipped: true, reason: 'disabled' };
     }
-    const targets = (config.webhooks || []).filter((w) => w.enabled !== false && w.url);
+    let targets = (config.webhooks || []).filter((w) => w.enabled !== false && w.url);
+    if (webhookId) targets = targets.filter((w) => w.id === webhookId);
     if (!targets.length) {
       return { sent: false, skipped: true, reason: 'no-webhook', error: force ? 'No enabled webhooks with a URL configured.' : undefined };
     }
-    if (!(config.groups || []).length) {
-      return { sent: false, skipped: true, reason: 'no-groups', error: force ? 'No products configured to display.' : undefined };
+
+    const now = Date.now();
+    const results = [];
+    const due = [];
+    // Decide which webhooks are due to send right now (each on its own schedule).
+    for (const w of targets) {
+      if (!force) {
+        const elapsed = now - (w.lastSentAt || 0);
+        if (elapsed < (w.intervalMinutes || DEFAULT_STOCK_CONFIG.intervalMinutes) * 60 * 1000) {
+          results.push({ name: w.name || w.id, ok: false, skipped: true, reason: 'interval-not-elapsed' });
+          continue;
+        }
+      }
+      if (!(w.groups || []).length) {
+        results.push({ name: w.name || w.id, ok: false, skipped: true, reason: 'no-groups', error: force ? 'No products configured to display.' : undefined });
+        continue;
+      }
+      due.push(w);
     }
 
-    if (!force) {
-      const elapsed = Date.now() - (config.lastSentAt || 0);
-      if (elapsed < config.intervalMinutes * 60 * 1000) {
-        return { sent: false, skipped: true, reason: 'interval-not-elapsed' };
-      }
+    if (!due.length) {
+      const errs = results.map((r) => r.error).filter(Boolean);
+      return {
+        sent: false, skipped: true, reason: 'nothing-due', delivered: 0, failed: 0, results,
+        error: force ? (errs.join('; ') || 'No webhooks were due to send.') : undefined,
+      };
     }
 
     const stock = await fetchNfaStock(env);
-    const embed = buildStockEmbed(config, stock);
 
-    // Deliver to every enabled webhook; collect per-target results.
-    const results = await Promise.all(targets.map(async (w) => {
+    // Each due webhook gets an embed built from ITS OWN settings/products.
+    const sendResults = await Promise.all(due.map(async (w) => {
       try {
-        await postToWebhook(config, w.url, embed);
+        const embed = buildStockEmbed(w, stock);
+        await postToWebhook(w, w.url, embed);
+        w.lastSentAt = now;
         return { name: w.name || w.id, ok: true };
       } catch (err) {
         return { name: w.name || w.id, ok: false, error: err.message };
       }
     }));
+    for (const r of sendResults) results.push(r);
 
-    const delivered = results.filter((r) => r.ok).length;
-    const failed = results.filter((r) => !r.ok);
+    const delivered = sendResults.filter((r) => r.ok).length;
+    const failed = sendResults.filter((r) => !r.ok);
 
     if (delivered > 0) {
-      config.lastSentAt = Date.now();
       await saveStockConfig(env, config);
     }
 
