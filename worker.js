@@ -146,12 +146,85 @@ async function hmacSha256Hex(secret, message) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Cache of valid NFA account-type keys (fetched from the upstream accounts list).
+// Module scope persists across requests in the same isolate; a short TTL keeps it
+// fresh without re-fetching on every webhook (which would add API calls).
+let _validTypesCache = { time: 0, types: null };
+const VALID_TYPES_TTL = 5 * 60 * 1000;
+
+async function getValidAccountTypes(env) {
+  const now = Date.now();
+  if (_validTypesCache.types && now - _validTypesCache.time < VALID_TYPES_TTL) {
+    return _validTypesCache.types;
+  }
+  try {
+    const res = await fetch(`${NFA_ORIGIN}/api/v1/accounts`, {
+      headers: { 'X-API-Key': env.NFA_API_KEY, Accept: 'application/json' },
+    });
+    if (!res.ok) return _validTypesCache.types || [];
+    const data = await res.json();
+    const accounts = data && data.accounts ? data.accounts : {};
+    const types = Object.keys(accounts);
+    if (types.length) _validTypesCache = { time: now, types };
+    return types;
+  } catch {
+    return _validTypesCache.types || [];
+  }
+}
+
+// Tokenize a free-form name into a Set of lowercase tokens. Applied identically to
+// SellAuth names and to NFA keys so they tokenize consistently:
+//   "Rust Temporary Account (0-250 Hours)" -> {rust,temporary,account,0,250,hours}
+//   "rust_0_250_hours"                      -> {rust,0,250,hours}
+// Letter<->digit boundaries are split ("10medals" -> "10","medals"; "15k" -> "15","k")
+// and "+" becomes "plus" so "7000+ Hours" matches "rust_7000_plus_hours".
+function nameTokens(str) {
+  const norm = String(str || '')
+    .toLowerCase()
+    .replace(/\+/g, ' plus ')
+    .replace(/([a-z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([a-z])/g, '$1 $2')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  return new Set(norm.split(/\s+/).filter(Boolean));
+}
+
+// Match a SellAuth product/variant name to a valid NFA account type.
+// Conservative by design: a type is only chosen when ALL of its tokens appear in
+// the item's tokens AND it strictly out-scores every other candidate (by token
+// count). On ambiguity or no match it returns null so the webhook fails safely
+// instead of minting a wrong (possibly pricier) account.
+function matchAccountType(text, validTypes) {
+  const tokens = nameTokens(text);
+  if (!tokens.size) return null;
+
+  let best = null;
+  let bestScore = 0;
+  let tie = false;
+
+  for (const type of validTypes) {
+    const typeTokens = [...nameTokens(type)];
+    if (!typeTokens.length || !typeTokens.every((t) => tokens.has(t))) continue;
+    const score = typeTokens.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = type;
+      tie = false;
+    } else if (score === bestScore) {
+      tie = true;
+    }
+  }
+
+  return best && !tie ? best : null;
+}
+
 // Decide which NFA account type to mint for a SellAuth item.
 // Priority:
 //   1. SELLAUTH_PRODUCT_MAP env (JSON) keyed by variant_id, then product_id.
 //   2. A custom field literally named "account_type".
-//   3. The SellAuth variant name, then the product name.
-function resolveAccountType(item, env) {
+//   3. Automatic match of the variant/product name against the live NFA type list.
+//   4. The raw SellAuth variant name, then the product name.
+async function resolveAccountType(item, env) {
   const product = item.product || {};
   const variant = item.variant || {};
 
@@ -173,6 +246,12 @@ function resolveAccountType(item, env) {
   const fields = item.custom_fields || {};
   for (const [name, value] of Object.entries(fields)) {
     if (name.trim().toLowerCase() === 'account_type' && value) return String(value);
+  }
+
+  const validTypes = await getValidAccountTypes(env);
+  if (validTypes.length) {
+    const matched = matchAccountType(`${product.name || ''} ${variant.name || ''}`, validTypes);
+    if (matched) return matched;
   }
 
   if (variant.name) return variant.name;
@@ -221,7 +300,7 @@ async function handleSellAuthWebhook(request, env) {
   }
 
   const item = payload.item || {};
-  const accountType = resolveAccountType(item, env);
+  const accountType = await resolveAccountType(item, env);
   if (!accountType) {
     return plain(400, 'Unable to determine account type for this product. Configure SELLAUTH_PRODUCT_MAP or set the variant/product name to a valid NFA account type.');
   }
