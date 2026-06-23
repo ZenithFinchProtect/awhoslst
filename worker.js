@@ -3,6 +3,7 @@
  */
 
 const NFA_ORIGIN = 'https://nfa-api.acode.ing';
+const SELLER_API_ORIGIN = 'https://reselling.pro/api/scm';
 
 // Leave empty to allow all origins.
 const ALLOWED_ORIGINS = new Set(['*']);
@@ -111,12 +112,12 @@ export default {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-//  SellAuth Dynamic Delivery
+//  SellAuth Dynamic Delivery  →  reselling.pro Seller API
 //  https://docs.sellauth.com/guides/dynamic-delivery
 //
 //  On checkout, SellAuth POSTs one request per invoice item. We verify the
-//  HMAC-SHA256 signature, mint NFA key(s) for the purchased product, and return
-//  them as plain text (one deliverable per line). HTTP 200 = delivered.
+//  HMAC-SHA256 signature, purchase key(s) via the reselling.pro Seller API,
+//  and return them as plain text (one deliverable per line). HTTP 200 = delivered.
 // ───────────────────────────────────────────────────────────────────────────
 
 function plain(status, text) {
@@ -146,15 +147,12 @@ async function hmacSha256Hex(secret, message) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Decide which NFA account type to mint for a SellAuth item.
+// Resolve the reselling.pro product+variant for a SellAuth item.
 // Priority:
 //   1. SELLAUTH_PRODUCT_MAP env (JSON) keyed by variant_id, then product_id.
-//   2. A custom field literally named "account_type".
-//   3. The SellAuth variant name, then the product name.
-function resolveAccountType(item, env) {
-  const product = item.product || {};
-  const variant = item.variant || {};
-
+//      Values are objects: { "productId": "UUID", "variantId": "UUID" }.
+//   2. Custom fields named "product_id" / "variant_id" (or camelCase).
+function resolveSellerProduct(item, env) {
   if (env.SELLAUTH_PRODUCT_MAP) {
     let map = null;
     try {
@@ -165,18 +163,26 @@ function resolveAccountType(item, env) {
     if (map) {
       const variantKey = item.variant_id != null ? String(item.variant_id) : null;
       const productKey = item.product_id != null ? String(item.product_id) : null;
-      if (variantKey && map[variantKey]) return map[variantKey];
-      if (productKey && map[productKey]) return map[productKey];
+      const entry = (variantKey && map[variantKey]) || (productKey && map[productKey]) || null;
+      if (entry && typeof entry === 'object' && entry.productId) {
+        return { productId: entry.productId, variantId: entry.variantId || undefined };
+      }
+      if (typeof entry === 'string' && entry) {
+        return { productId: entry };
+      }
     }
   }
 
   const fields = item.custom_fields || {};
+  let productId = null;
+  let variantId = null;
   for (const [name, value] of Object.entries(fields)) {
-    if (name.trim().toLowerCase() === 'account_type' && value) return String(value);
+    const n = name.trim().toLowerCase();
+    if ((n === 'product_id' || n === 'productid') && value) productId = String(value);
+    if ((n === 'variant_id' || n === 'variantid') && value) variantId = String(value);
   }
+  if (productId) return { productId, variantId: variantId || undefined };
 
-  if (variant.name) return variant.name;
-  if (product.name) return product.name;
   return null;
 }
 
@@ -208,9 +214,8 @@ async function handleSellAuthWebhook(request, env) {
     }
   }
 
-  if (!env.NFA_API_KEY) {
-    // Retryable: server is misconfigured, don't fail the customer's item yet.
-    return plain(500, 'Server configuration error: NFA_API_KEY is not set');
+  if (!env.SELLER_API_KEY) {
+    return plain(500, 'Server configuration error: SELLER_API_KEY is not set');
   }
 
   let payload;
@@ -221,50 +226,55 @@ async function handleSellAuthWebhook(request, env) {
   }
 
   const item = payload.item || {};
-  const accountType = resolveAccountType(item, env);
-  if (!accountType) {
-    return plain(400, 'Unable to determine account type for this product. Configure SELLAUTH_PRODUCT_MAP or set the variant/product name to a valid NFA account type.');
+  const sellerProduct = resolveSellerProduct(item, env);
+  if (!sellerProduct) {
+    return plain(400, 'Unable to determine product for this item. Configure SELLAUTH_PRODUCT_MAP with { productId, variantId } entries or set custom fields.');
   }
 
-  const amount = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+  const quantity = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
 
-  let nfaResponse;
+  const reqBody = {
+    productId: sellerProduct.productId,
+    source: 'public',
+    quantity,
+  };
+  if (sellerProduct.variantId) reqBody.variantId = sellerProduct.variantId;
+  if (payload.invoice_id) reqBody.order_id = String(payload.invoice_id);
+
+  let apiResponse;
   try {
-    nfaResponse = await fetch(`${NFA_ORIGIN}/api/v1/create_keys`, {
+    apiResponse = await fetch(`${SELLER_API_ORIGIN}/sellerapi/keys`, {
       method: 'POST',
       headers: {
-        'X-API-Key': env.NFA_API_KEY,
+        'X-API-Key': env.SELLER_API_KEY,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify({ account_type: accountType, amount }),
+      body: JSON.stringify(reqBody),
     });
   } catch (err) {
-    // Network/upstream failure → retryable (5xx).
     return plain(502, 'Upstream request failed: ' + err.message);
   }
 
   let data = null;
-  const text = await nfaResponse.text();
+  const text = await apiResponse.text();
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
     data = null;
   }
 
-  if (!nfaResponse.ok) {
-    const message = (data && data.message) || text || 'Failed to create keys';
-    // Map upstream 5xx to retryable; everything else is non-retryable.
-    const status = nfaResponse.status >= 500 ? 502 : 400;
+  if (!apiResponse.ok || (data && data.success === false)) {
+    const message = (data && data.message) || text || 'Failed to purchase keys';
+    const status = apiResponse.status >= 500 ? 502 : 400;
     return plain(status, message);
   }
 
   const keys = extractKeys(data);
   if (!keys.length) {
-    return plain(400, (data && data.message) || 'No keys were generated for this order.');
+    return plain(400, (data && data.message) || 'No keys were returned for this order.');
   }
 
-  // Success: one deliverable per line.
   return plain(200, keys.join('\n'));
 }
 
