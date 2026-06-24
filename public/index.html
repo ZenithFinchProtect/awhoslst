@@ -6,59 +6,109 @@
     <title>Nordic Cheats — Download</title>
     <meta name="description" content="Download your Nordic Cheats loader">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-primary: #060a10;
-            --bg-secondary: #0c1220;
-            --bg-card: #101829;
-            --bg-input: #0a0f1a;
-            --border: #1a2744;
-            --border-hover: #2a4070;
-            --accent: #00bfff;
-            --accent-glow: rgba(0, 191, 255, 0.15);
-            --accent-bright: #00d4ff;
-            --accent-dim: #0099cc;
+            --bg-primary: #07070a;
+            --bg-secondary: #0f1118;
+            --bg-card: rgba(15, 23, 42, 0.54);
+            --bg-input: #0a0d14;
+            --border: rgba(148, 163, 184, 0.18);
+            --border-hover: rgba(96, 165, 250, 0.42);
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.15);
+            --accent-bright: #7dd3fc;
+            --accent-dim: #0ea5e9;
+            --accent-gradient: linear-gradient(135deg, #f8fafc 0%, #93c5fd 38%, #38bdf8 100%);
             --success: #22c55e;
             --success-dim: rgba(34, 197, 94, 0.12);
             --error: #ef4444;
             --error-dim: rgba(239, 68, 68, 0.12);
             --warning: #f59e0b;
             --warning-dim: rgba(245, 158, 11, 0.12);
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
+            --text-primary: #dee2e6;
+            --text-secondary: #c9c9c9;
             --text-muted: #64748b;
-            --radius: 10px;
-            --radius-sm: 6px;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-pill: 999px;
             --shadow: 0 4px 24px rgba(0,0,0,0.4);
             --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html {
+            min-height: 100%;
+            background: #07070a url('https://nordiccheats.net/assets/228799/hero.jpg?v=1782173665924') center / cover fixed no-repeat;
+        }
+
         body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--bg-primary);
+            font-family: 'Poppins', sans-serif;
+            background: transparent;
             color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
         }
 
-        /* Ambient background glow */
+        /* Nebula gradient overlay */
         body::before {
             content: '';
             position: fixed;
-            top: -200px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 900px;
-            height: 500px;
-            background: radial-gradient(ellipse, rgba(0,191,255,0.06) 0%, transparent 70%);
+            inset: 0;
+            z-index: -2;
             pointer-events: none;
+            background:
+                radial-gradient(circle at 18% 20%, rgba(59, 130, 246, 0.20), transparent 32%),
+                radial-gradient(circle at 82% 12%, rgba(14, 165, 233, 0.14), transparent 30%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.78) 0%, rgba(11, 17, 32, 0.72) 48%, rgba(17, 24, 39, 0.76) 100%),
+                url('https://nordiccheats.net/assets/228799/hero.jpg?v=1782173665924') center / cover no-repeat;
+        }
+
+        /* Animated star dot pattern */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background-image: radial-gradient(circle, rgba(125, 211, 252, 0.55) 1px, transparent 1.6px);
+            background-size: 120px 120px;
+            opacity: 0.28;
+            animation: ncGpuStarDrift 28s linear infinite;
+        }
+
+        @keyframes ncGpuStarDrift {
+            0%   { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-120px, 60px, 0); }
+        }
+
+        #particlesCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             z-index: 0;
+            pointer-events: none;
         }
 
         .app { position: relative; z-index: 1; }
+
+        /* Additional nebula glow spots */
+        .app::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 18% 28%, rgba(56, 189, 248, 0.16), transparent 20%),
+                radial-gradient(circle at 82% 18%, rgba(59, 130, 246, 0.12), transparent 22%),
+                radial-gradient(circle at 66% 72%, rgba(14, 165, 233, 0.1), transparent 26%);
+            opacity: 0.75;
+        }
 
         /* ── Navigation ── */
         .navbar {
@@ -66,19 +116,28 @@
             align-items: center;
             justify-content: space-between;
             padding: 16px 32px;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(12px);
-            background: rgba(6, 10, 16, 0.85);
+            background: rgba(7, 7, 10, 0.9);
             position: sticky;
             top: 0;
             z-index: 100;
         }
 
         .logo {
-            font-size: 20px;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .logo img {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
         }
 
         .nav-right {
@@ -99,13 +158,19 @@
             color: var(--text-secondary);
             cursor: pointer;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             transition: var(--transition);
             user-select: none;
+            text-decoration: none;
         }
 
-        .nav-link:hover { color: var(--accent-bright); }
-        .nav-link.active { color: var(--accent); }
+        .nav-link:hover { color: #fff; }
+        .nav-link.active { color: #fff; }
+
+        .nav-link a {
+            color: inherit;
+            text-decoration: none;
+        }
 
         .auth-area {
             display: flex;
@@ -152,7 +217,9 @@
 
         /* ── Cards ── */
         .card {
-            background: var(--bg-card);
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 24px;
@@ -169,9 +236,10 @@
         }
 
         .card-title {
+            font-family: 'Satoshi', system-ui, sans-serif;
             font-size: 16px;
             font-weight: 700;
-            color: var(--text-primary);
+            color: #fff;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -252,7 +320,7 @@
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             color: var(--text-primary);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Poppins', sans-serif;
             font-size: 14px;
             transition: var(--transition);
         }
@@ -280,8 +348,8 @@
         .btn {
             padding: 10px 20px;
             border: none;
-            border-radius: var(--radius-sm);
-            font-family: 'Inter', sans-serif;
+            border-radius: var(--radius-pill);
+            font-family: 'Poppins', sans-serif;
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
@@ -292,10 +360,11 @@
         }
 
         .btn-primary {
-            background: var(--accent);
-            color: #fff;
+            background: var(--accent-gradient);
+            color: #03101f;
+            font-weight: 700;
         }
-        .btn-primary:hover { background: var(--accent-dim); transform: translateY(-1px); }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(56, 189, 248, 0.25); }
         .btn-primary:active { transform: translateY(0); }
 
         .btn-secondary {
@@ -447,17 +516,42 @@
             padding: 80px 20px 40px;
         }
 
-        .hero-title {
-            font-size: 48px;
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            border: 1px solid rgba(96, 165, 250, 0.42);
+            border-radius: var(--radius-pill);
+            font-size: 12px;
             font-weight: 800;
-            letter-spacing: -1.5px;
-            color: var(--accent);
+            color: #dbeafe;
+            margin-bottom: 24px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .hero-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+        }
+
+        .hero-title {
+            font-family: 'Satoshi', system-ui, sans-serif;
+            font-size: 48px;
+            font-weight: 900;
+            color: #fff;
             margin-bottom: 16px;
+            line-height: 1.1;
         }
 
         .hero-sub {
             font-size: 16px;
-            color: var(--text-muted);
+            color: var(--text-secondary);
             max-width: 500px;
             margin: 0 auto 50px;
             line-height: 1.6;
@@ -472,19 +566,21 @@
         }
 
         .home-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.54);
+            border: 1px solid rgba(148, 163, 184, 0.18);
             border-radius: var(--radius);
             padding: 32px;
             transition: var(--transition);
+            backdrop-filter: blur(8px);
         }
 
-        .home-card:hover { border-color: var(--border-hover); }
+        .home-card:hover { border-color: rgba(96, 165, 250, 0.42); box-shadow: 0 0 30px rgba(56, 189, 248, 0.05); }
 
         .home-card-title {
+            font-family: 'Satoshi', system-ui, sans-serif;
             font-size: 18px;
             font-weight: 700;
-            color: var(--accent);
+            color: #fff;
             margin-bottom: 12px;
         }
 
@@ -495,18 +591,18 @@
         }
 
         .hero-btn {
-            padding: 14px 40px;
-            background: var(--accent);
-            color: #000;
+            padding: 16px 40px;
+            background: var(--accent-gradient);
+            color: #03101f;
             border: none;
-            border-radius: var(--radius-sm);
+            border-radius: var(--radius-pill);
             font-size: 15px;
             font-weight: 700;
             cursor: pointer;
             transition: var(--transition);
         }
 
-        .hero-btn:hover { background: var(--accent-dim); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,191,255,0.25); }
+        .hero-btn:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(56,189,248,0.25); }
 
         /* ── Toast ── */
         .toast-container {
@@ -557,9 +653,11 @@
         }
 
         .section-title {
+            font-family: 'Satoshi', system-ui, sans-serif;
             font-size: 20px;
             font-weight: 700;
             margin-bottom: 4px;
+            color: #fff;
         }
 
         .section-desc {
@@ -572,10 +670,19 @@
             text-align: center;
             padding: 32px 0;
             margin-top: 60px;
-            border-top: 1px solid var(--border);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
             color: var(--text-muted);
             font-size: 12px;
         }
+
+        footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin: 0 12px;
+            transition: var(--transition);
+        }
+
+        footer a:hover { color: #fff; }
 
         /* ── Copy button ── */
         .copy-btn {
@@ -683,9 +790,10 @@
         }
 
         .login-gate-title {
+            font-family: 'Satoshi', system-ui, sans-serif;
             font-size: 24px;
             font-weight: 700;
-            color: var(--text-primary);
+            color: #fff;
             margin-bottom: 8px;
         }
 
@@ -720,15 +828,23 @@
     </style>
 </head>
 <body>
+    <canvas id="particlesCanvas"></canvas>
     <div class="app">
         <!-- Toasts -->
         <div class="toast-container" id="toastContainer"></div>
 
         <!-- Nav -->
         <nav class="navbar">
-            <div class="logo">Nordic Cheats</div>
+            <a class="logo" href="https://nordiccheats.net/">
+                <img src="https://i.postimg.cc/gJ22K408/imag11111e.png" alt="Nordic Cheats">
+                Nordic Cheats
+            </a>
             <ul class="nav-links">
-                <li class="nav-link active" onclick="showPage('home', this)">Home</li>
+                <li class="nav-link active" onclick="showPage('home', this)">Download</li>
+                <li class="nav-link"><a href="https://nordiccheats.net/feedback">Reviews</a></li>
+                <li class="nav-link"><a href="https://nordiccheats.net/status">Status</a></li>
+                <li class="nav-link"><a href="https://nordiccheats.net/terms-of-service">Terms</a></li>
+                <li class="nav-link"><a href="https://support.nordiccheats.net/">Support</a></li>
             </ul>
         </nav>
 
@@ -737,8 +853,9 @@
             <!-- ═══════════════ HOME ═══════════════ -->
             <div id="home" class="page active">
                 <div class="hero">
-                    <h1 class="hero-title">Nordic Cheats</h1>
-                    <p class="hero-sub">Download your loader below</p>
+                    <div class="hero-badge">Loader Download</div>
+                    <h1 class="hero-title">Download Your<br>Loader</h1>
+                    <p class="hero-sub">Enter your activation key below to download the Nordic Cheats loader. Re-downloads are free for valid keys.</p>
                 </div>
                 <div class="home-cards" style="grid-template-columns:1fr;max-width:500px;">
                     <div class="home-card" style="cursor:pointer;" onclick="openCustomerModal('download')">
@@ -788,12 +905,12 @@
                 <!-- Panel content (open: no password required) -->
                 <div class="panel-content unlocked" id="panelContent">
                     <!-- Sub-navigation for panel sections -->
-                    <div style="display:flex;gap:4px;background:var(--bg-secondary);border-radius:8px;padding:4px;border:1px solid var(--border);margin-bottom:24px;width:fit-content">
-                        <div class="panel-tab active" onclick="showPanelTab('panelDashboard', this)" style="padding:8px 18px;border-radius:6px;color:#fff;background:var(--accent);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Dashboard</div>
-                        <div class="panel-tab" onclick="showPanelTab('panelActivate', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Activate</div>
-                        <div class="panel-tab" onclick="showPanelTab('panelKeys', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Keys</div>
-                        <div class="panel-tab" onclick="showPanelTab('panelTools', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Tools</div>
-                        <div class="panel-tab" onclick="showPanelTab('panelStockBot', this)" style="padding:8px 18px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:500;transition:var(--transition);user-select:none">Stock Bot</div>
+                    <div style="display:flex;gap:4px;background:rgba(15,23,42,0.54);border-radius:999px;padding:5px;border:1px solid rgba(148,163,184,0.18);margin-bottom:24px;width:fit-content">
+                        <div class="panel-tab active" onclick="showPanelTab('panelDashboard', this)" style="padding:8px 20px;border-radius:999px;color:#03101f;background:var(--accent-gradient);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Dashboard</div>
+                        <div class="panel-tab" onclick="showPanelTab('panelActivate', this)" style="padding:8px 20px;border-radius:999px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Activate</div>
+                        <div class="panel-tab" onclick="showPanelTab('panelKeys', this)" style="padding:8px 20px;border-radius:999px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Keys</div>
+                        <div class="panel-tab" onclick="showPanelTab('panelTools', this)" style="padding:8px 20px;border-radius:999px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Tools</div>
+                        <div class="panel-tab" onclick="showPanelTab('panelStockBot', this)" style="padding:8px 20px;border-radius:999px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Stock Bot</div>
                     </div>
 
                 <!-- Dashboard -->
@@ -1194,7 +1311,16 @@
 
         </div>
 
-        <footer>Nordic Cheats 2026 | NFA Reseller Panel v1.0</footer>
+        <footer>
+            <div style="margin-bottom:12px">
+                <a href="https://nordiccheats.net/">Home</a>
+                <a href="https://nordiccheats.net/allproduct">Products</a>
+                <a href="https://nordiccheats.net/feedback">Feedback</a>
+                <a href="https://nordiccheats.net/status">Status</a>
+                <a href="https://nordiccheats.net/terms-of-service">Terms</a>
+            </div>
+            <div>&copy; Nordic Cheats — All rights reserved.</div>
+        </footer>
     </div>
 
     <script>
@@ -1334,8 +1460,8 @@
                 t.style.background = 'transparent';
                 t.classList.remove('active');
             });
-            el.style.color = '#fff';
-            el.style.background = 'var(--accent)';
+            el.style.color = '#03101f';
+            el.style.background = 'var(--accent-gradient)';
             el.classList.add('active');
 
             // Auto-populate dropdowns / load data for the opened tab
@@ -1952,45 +2078,75 @@
             document.getElementById('customerOutput').classList.remove('show');
 
             try {
-                let r;
                 if (currentModalAction === 'download') {
-                    // Build the loader for an already-activated key.
-                    setCustomerProgress('Preparing your loader…');
-                    r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
+                    // Single-request loader: worker handles activate + build
+                    // server-side and streams the binary EXE back directly.
+                    setCustomerProgress('Preparing your loader — first-time keys are activated automatically…');
 
-                    // A freshly-generated key has no activation yet, so create_exe
-                    // returns "Activation not found". Activate it once, then retry.
-                    if (!r.ok && /activation not found/i.test(r.data?.message || '')) {
-                        setCustomerProgress('Activating your key — this can take up to 2 minutes. Please keep this window open…');
-                        const act = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
-                        if (act.ok) {
-                            setCustomerProgress('Activated! Building your loader…');
-                            r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
-                        } else {
-                            r = act;
-                        }
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 150000);
+
+                    const res = await fetch('/api/v1/loader', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ activation_key: key }),
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timer);
+
+                    if (!res.ok) {
+                        // Error responses come back as JSON.
+                        const err = await res.json().catch(() => ({ message: 'Download failed' }));
+                        setCustomerProgress(null);
+                        showOutput('customer', err, false);
+                        toast(err.message || 'Download failed', 'error');
+                    } else {
+                        // Success — binary EXE blob.
+                        const blob = await res.blob();
+                        const disposition = res.headers.get('Content-Disposition') || '';
+                        const match = disposition.match(/filename="?([^"]+)"?/);
+                        const filename = match ? match[1] : 'loader.exe';
+
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+
+                        setCustomerProgress(null);
+                        showOutput('customer', { status: 'success', message: 'Loader downloaded', filename }, true);
+                        toast('Loader downloaded successfully', 'success');
                     }
                 } else {
+                    // Activate-only action (no download).
                     setCustomerProgress('Activating your key — this can take up to 2 minutes. Please keep this window open…');
-                    r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
-                }
+                    const r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
 
-                setCustomerProgress(null);
+                    setCustomerProgress(null);
 
-                const display = { ...r.data };
-                if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
-                
-                showOutput('customer', display, r.ok);
+                    const display = { ...r.data };
+                    if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
+                    showOutput('customer', display, r.ok);
 
-                if (r.ok && r.data.exe_base64) {
-                    downloadExe(r.data.exe_base64, r.data.exe_filename);
-                    toast('Loader downloaded successfully', 'success');
-                } else if (!r.ok) {
-                    toast(r.data.message || 'Action failed', 'error');
+                    if (r.ok && r.data.exe_base64) {
+                        downloadExe(r.data.exe_base64, r.data.exe_filename);
+                        toast('Loader downloaded successfully', 'success');
+                    } else if (r.ok) {
+                        toast('Key activated successfully', 'success');
+                    } else {
+                        toast(r.data.message || 'Activation failed', 'error');
+                    }
                 }
             } catch (err) {
                 setCustomerProgress(null);
-                toast('Error: ' + err.message, 'error');
+                if (err.name === 'AbortError') {
+                    toast('Request timed out — please try again', 'error');
+                } else {
+                    toast('Error: ' + err.message, 'error');
+                }
             }
             
             btn.disabled = false;
@@ -2255,6 +2411,59 @@
         }
         window.addEventListener('hashchange', handleHash);
         handleHash();
+    </script>
+
+    <!-- Particles animation (matches nordiccheats.net) -->
+    <script>
+    (function () {
+        const canvas = document.getElementById('particlesCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function createParticles() {
+            particles = [];
+            const particleCount = Math.floor((canvas.width * canvas.height) / 15000);
+            for (let i = 0; i < particleCount; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2 + 1,
+                    speedX: (Math.random() - 0.5) * 0.3,
+                    speedY: (Math.random() - 0.5) * 0.3,
+                    opacity: Math.random() * 0.5 + 0.2
+                });
+            }
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(function (particle) {
+                particle.x += particle.speedX;
+                particle.y += particle.speedY;
+                if (particle.x < 0 || particle.x > canvas.width) particle.speedX *= -1;
+                if (particle.y < 0 || particle.y > canvas.height) particle.speedY *= -1;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(107, 182, 255, ' + particle.opacity + ')';
+                ctx.fill();
+            });
+            requestAnimationFrame(animateParticles);
+        }
+
+        resizeCanvas();
+        createParticles();
+        animateParticles();
+        window.addEventListener('resize', function () {
+            resizeCanvas();
+            createParticles();
+        });
+    })();
     </script>
 </body>
 </html>
