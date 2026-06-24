@@ -841,6 +841,7 @@
             </a>
             <ul class="nav-links">
                 <li class="nav-link active" onclick="showPage('home', this)">Download</li>
+                <li class="nav-link" onclick="showPage('panel', this)">Panel</li>
                 <li class="nav-link"><a href="https://nordiccheats.net/feedback">Reviews</a></li>
                 <li class="nav-link"><a href="https://nordiccheats.net/status">Status</a></li>
                 <li class="nav-link"><a href="https://nordiccheats.net/terms-of-service">Terms</a></li>
@@ -902,8 +903,20 @@
             <!-- ═══════════════ PANEL (all tabs) ═══════════════ -->
             <div id="panel" class="page">
 
-                <!-- Panel content (open: no password required) -->
-                <div class="panel-content unlocked" id="panelContent">
+                <!-- Password gate -->
+                <div class="login-gate" id="panelGate">
+                    <div class="login-gate-icon">🔒</div>
+                    <div class="login-gate-title">Panel Access</div>
+                    <div class="login-gate-desc">Enter the panel password to continue</div>
+                    <form class="login-gate-form" onsubmit="return unlockPanel(event)">
+                        <input type="password" class="form-input" id="panelPasswordInput" placeholder="Password..." autocomplete="off">
+                        <button type="submit" class="btn btn-primary">Unlock</button>
+                    </form>
+                    <div class="login-gate-error" id="panelGateError">Incorrect password</div>
+                </div>
+
+                <!-- Panel content (locked until password entered) -->
+                <div class="panel-content" id="panelContent">
                     <!-- Sub-navigation for panel sections -->
                     <div style="display:flex;gap:4px;background:rgba(15,23,42,0.54);border-radius:999px;padding:5px;border:1px solid rgba(148,163,184,0.18);margin-bottom:24px;width:fit-content">
                         <div class="panel-tab active" onclick="showPanelTab('panelDashboard', this)" style="padding:8px 20px;border-radius:999px;color:#03101f;background:var(--accent-gradient);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Dashboard</div>
@@ -1438,6 +1451,41 @@
         }
 
         // ── Top-level navigation (Home / Panel) ──
+        async function unlockPanel(e) {
+            e.preventDefault();
+            const input = document.getElementById('panelPasswordInput');
+            const err = document.getElementById('panelGateError');
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = '...';
+            try {
+                const res = await fetch('/api/v1/panel-auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: input.value })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    document.getElementById('panelGate').style.display = 'none';
+                    document.getElementById('panelContent').classList.add('unlocked');
+                    err.style.display = 'none';
+                    sessionStorage.setItem('nfa_panel_auth', input.value);
+                    loadDashboard();
+                    populateDropdowns();
+                } else {
+                    err.style.display = 'block';
+                    input.value = '';
+                    input.focus();
+                }
+            } catch {
+                err.textContent = 'Network error';
+                err.style.display = 'block';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Unlock';
+            return false;
+        }
+
         function showPage(name, el) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.getElementById(name).classList.add('active');
@@ -1445,7 +1493,7 @@
             if (el) el.classList.add('active');
             if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
 
-            if (name === 'panel') {
+            if (name === 'panel' && document.getElementById('panelContent').classList.contains('unlocked')) {
                 loadDashboard();
                 populateDropdowns();
             }

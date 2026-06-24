@@ -24,3 +24,6 @@ crons = ["* * * * *"]
 [[kv_namespaces]]
 binding = "STOCK_BOT"
 id = "14234c4109ef4e23957f850f64e6880d"
+
+# Panel password — set via: wrangler secret put PANEL_PASSWORD
+# The worker falls back to a default if the secret is not set.
