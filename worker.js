@@ -60,6 +60,14 @@ export default {
       return handleStockBotApi(request, env, url);
     }
 
+    // --- Panel auth endpoint: verify password server-side ---
+    if (url.pathname === '/api/v1/panel-auth') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      }
+      return handlePanelAuth(request, env, origin);
+    }
+
     // --- Combined loader endpoint: activate + download in one request ---
     if (url.pathname === '/api/v1/loader') {
       if (request.method === 'OPTIONS') {
@@ -144,6 +152,43 @@ export default {
 //
 //  Merges the activate + create_exe dance into a single request. The browser
 //  makes ONE call; the worker handles the NFA round-trips server-side (≈1 ms
+// ───────────────────────────────────────────────────────────────────────────
+//  Panel Auth — server-side password verification so the password never
+//  appears in client-side source code.
+// ───────────────────────────────────────────────────────────────────────────
+
+async function handlePanelAuth(request, env, origin) {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ ok: false, error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  let body;
+  try { body = await request.json(); } catch {
+    return new Response(JSON.stringify({ ok: false, error: 'Invalid JSON' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  const password = (body.password || '').trim();
+  const expected = (env.PANEL_PASSWORD || 'NordicNFA2026');
+
+  if (!password || password !== expected) {
+    return new Response(JSON.stringify({ ok: false, error: 'Incorrect password' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+}
+
 //  RTT vs hundreds of ms from the end-user). Returns the EXE as a binary
 //  download directly — no base64 JSON overhead.
 // ───────────────────────────────────────────────────────────────────────────
