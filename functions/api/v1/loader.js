@@ -81,12 +81,14 @@ export async function onRequest(context) {
                 });
                 const exeJson = await exeRes.json();
                 if (!exeRes.ok || !exeJson.exe_base64) {
-                    return jsonResp(exeRes.status || 500, exeJson.message || 'Failed to build loader');
+                    const s = exeRes.ok ? 422 : (exeRes.status || 500);
+                    return jsonResp(s, exeJson.message || 'Failed to build loader');
                 }
                 exeData = exeJson;
             }
         } else {
-            return jsonResp(res.status, data.message || 'Failed to build loader');
+            const errStatus = res.ok ? 422 : res.status;
+            return jsonResp(errStatus, data.message || 'Failed to build loader');
         }
     } catch (err) {
         return jsonResp(502, 'Upstream request failed: ' + err.message);

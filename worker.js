@@ -230,13 +230,16 @@ async function handleLoaderEndpoint(request, env, origin) {
         });
         const exeJson = await exeRes.json();
         if (!exeRes.ok || !exeJson.exe_base64) {
-          return jsonErr(exeRes.status || 500, exeJson.message || 'Failed to build loader');
+          const s = exeRes.ok ? 422 : (exeRes.status || 500);
+          return jsonErr(s, exeJson.message || 'Failed to build loader');
         }
         exeData = exeJson;
       }
     } else {
       // Unexpected error from create_exe.
-      return jsonErr(res.status, data.message || 'Failed to build loader');
+      // Force non-2xx so the frontend shows an error instead of downloading the JSON.
+      const errStatus = res.ok ? 422 : res.status;
+      return jsonErr(errStatus, data.message || 'Failed to build loader');
     }
   } catch (err) {
     return jsonErr(502, 'Upstream request failed: ' + err.message);
