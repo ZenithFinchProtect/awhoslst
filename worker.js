@@ -80,7 +80,15 @@ export default {
     // In a worker with [assets] binding, assets are served natively if the request
     // doesn't hit a custom handler, or if we use env.ASSETS.fetch(request)
     if (!url.pathname.startsWith('/api/')) {
-        return env.ASSETS.fetch(request);
+        const assetRes = await env.ASSETS.fetch(request);
+        // Add security headers to all served pages
+        const secRes = new Response(assetRes.body, assetRes);
+        secRes.headers.set('X-Content-Type-Options', 'nosniff');
+        secRes.headers.set('X-Frame-Options', 'DENY');
+        secRes.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        secRes.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        secRes.headers.set('X-XSS-Protection', '1; mode=block');
+        return secRes;
     }
 
     // --- CORS preflight ---
@@ -157,35 +165,111 @@ export default {
 //  appears in client-side source code.
 // ───────────────────────────────────────────────────────────────────────────
 
+// Rate-limit config for panel auth
+const PANEL_MAX_ATTEMPTS = 5;
+const PANEL_LOCKOUT_SECONDS = 900; // 15 minutes
+
+// In-memory rate-limit store (per-isolate; resets on cold start but still
+// effective against sustained brute-force within a single instance).
+const _panelAttempts = new Map(); // ip -> { count, firstAttempt }
+
+function getPanelRateLimit(ip) {
+  const entry = _panelAttempts.get(ip);
+  if (!entry) return null;
+  if (Date.now() - entry.firstAttempt > PANEL_LOCKOUT_SECONDS * 1000) {
+    _panelAttempts.delete(ip);
+    return null;
+  }
+  return entry;
+}
+
+function recordPanelFailure(ip) {
+  const entry = _panelAttempts.get(ip);
+  if (entry) {
+    entry.count++;
+  } else {
+    _panelAttempts.set(ip, { count: 1, firstAttempt: Date.now() });
+  }
+}
+
+function clearPanelFailures(ip) {
+  _panelAttempts.delete(ip);
+}
+
+// Constant-time password comparison to prevent timing attacks
+function panelTimingSafeEqual(a, b) {
+  if (a.length !== b.length) {
+    // Compare against dummy of same length to avoid leaking length info
+    const dummy = 'x'.repeat(a.length);
+    let diff = 0;
+    for (let i = 0; i < dummy.length; i++) diff |= dummy.charCodeAt(i) ^ a.charCodeAt(i);
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 async function handlePanelAuth(request, env, origin) {
+  const hdrs = { 'Content-Type': 'application/json', ...corsHeaders(origin) };
+
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ ok: false, error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+      status: 405, headers: hdrs,
+    });
+  }
+
+  // Get client IP for rate limiting
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+
+  // Check rate limit
+  const rateEntry = getPanelRateLimit(ip);
+  if (rateEntry && rateEntry.count >= PANEL_MAX_ATTEMPTS) {
+    const remaining = Math.ceil((PANEL_LOCKOUT_SECONDS * 1000 - (Date.now() - rateEntry.firstAttempt)) / 1000);
+    return new Response(JSON.stringify({ ok: false, error: 'Too many attempts. Try again later.', retry_after: remaining }), {
+      status: 429, headers: { ...hdrs, 'Retry-After': String(remaining) },
+    });
+  }
+
+  // Reject missing/suspicious user-agent (basic bot filtering)
+  const ua = request.headers.get('User-Agent') || '';
+  if (!ua || ua.length < 5) {
+    return new Response(JSON.stringify({ ok: false, error: 'Forbidden' }), {
+      status: 403, headers: hdrs,
     });
   }
 
   let body;
   try { body = await request.json(); } catch {
     return new Response(JSON.stringify({ ok: false, error: 'Invalid JSON' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+      status: 400, headers: hdrs,
     });
   }
 
+  // Input length limit — reject absurdly long passwords (DoS/memory abuse)
   const password = (body.password || '').trim();
+  if (password.length > 128) {
+    recordPanelFailure(ip);
+    return new Response(JSON.stringify({ ok: false, error: 'Incorrect password' }), {
+      status: 401, headers: hdrs,
+    });
+  }
+
   const expected = (env.PANEL_PASSWORD || 'NordicNFA2026');
 
-  if (!password || password !== expected) {
+  if (!password || !panelTimingSafeEqual(password, expected)) {
+    recordPanelFailure(ip);
+    // Generic error — don't reveal whether account exists or password format
     return new Response(JSON.stringify({ ok: false, error: 'Incorrect password' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+      status: 401, headers: hdrs,
     });
   }
 
+  // Success — clear rate limit for this IP
+  clearPanelFailures(ip);
+
   return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    status: 200, headers: hdrs,
   });
 }
 
