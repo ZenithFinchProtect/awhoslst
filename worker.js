@@ -60,6 +60,14 @@ export default {
       return handleStockBotApi(request, env, url);
     }
 
+    // --- Combined loader endpoint: activate + download in one request ---
+    if (url.pathname === '/api/v1/loader') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      }
+      return handleLoaderEndpoint(request, env, origin);
+    }
+
     // --- Serve Static Assets ---
     // In a worker with [assets] binding, assets are served natively if the request
     // doesn't hit a custom handler, or if we use env.ASSETS.fetch(request)
@@ -130,6 +138,124 @@ export default {
     ctx.waitUntil(runStockBot(env, { force: false }));
   },
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Combined Loader Endpoint — /api/v1/loader
+//
+//  Merges the activate + create_exe dance into a single request. The browser
+//  makes ONE call; the worker handles the NFA round-trips server-side (≈1 ms
+//  RTT vs hundreds of ms from the end-user). Returns the EXE as a binary
+//  download directly — no base64 JSON overhead.
+// ───────────────────────────────────────────────────────────────────────────
+
+async function handleLoaderEndpoint(request, env, origin) {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ status: 'error', message: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  if (!env.NFA_API_KEY) {
+    return new Response(JSON.stringify({ status: 'error', message: 'Server configuration error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ status: 'error', message: 'Invalid JSON body' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  const key = body && body.activation_key;
+  if (!key) {
+    return new Response(JSON.stringify({ status: 'error', message: 'activation_key is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  const nfaHeaders = {
+    'X-API-Key': env.NFA_API_KEY,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+
+  const jsonErr = (status, message) => new Response(
+    JSON.stringify({ status: 'error', message }),
+    { status, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } }
+  );
+
+  // Step 1: Try create_exe — fast path for already-activated keys.
+  let exeData;
+  try {
+    const res = await fetch(`${NFA_ORIGIN}/api/v1/create_exe`, {
+      method: 'POST',
+      headers: nfaHeaders,
+      body: JSON.stringify({ activation_key: key }),
+    });
+    const data = await res.json();
+
+    if (res.ok && data.exe_base64) {
+      // Key already activated — return binary immediately.
+      exeData = data;
+    } else if (/activation not found/i.test(data.message || '')) {
+      // Key not activated yet — activate it.
+      const actRes = await fetch(`${NFA_ORIGIN}/api/v1/activate`, {
+        method: 'POST',
+        headers: nfaHeaders,
+        body: JSON.stringify({ activation_key: key }),
+      });
+      const actData = await actRes.json();
+
+      if (!actRes.ok) {
+        return jsonErr(actRes.status, actData.message || 'Activation failed');
+      }
+
+      // Some NFA versions return the EXE directly from activate.
+      if (actData.exe_base64) {
+        exeData = actData;
+      } else {
+        // Activation succeeded but no EXE — build it now.
+        const exeRes = await fetch(`${NFA_ORIGIN}/api/v1/create_exe`, {
+          method: 'POST',
+          headers: nfaHeaders,
+          body: JSON.stringify({ activation_key: key }),
+        });
+        const exeJson = await exeRes.json();
+        if (!exeRes.ok || !exeJson.exe_base64) {
+          return jsonErr(exeRes.status || 500, exeJson.message || 'Failed to build loader');
+        }
+        exeData = exeJson;
+      }
+    } else {
+      // Unexpected error from create_exe.
+      return jsonErr(res.status, data.message || 'Failed to build loader');
+    }
+  } catch (err) {
+    return jsonErr(502, 'Upstream request failed: ' + err.message);
+  }
+
+  // Decode base64 → binary and stream as a file download.
+  const binary = Uint8Array.from(atob(exeData.exe_base64), c => c.charCodeAt(0));
+  const filename = exeData.exe_filename || 'loader.exe';
+
+  return new Response(binary, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(binary.length),
+      ...corsHeaders(origin),
+    },
+  });
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 //  SellAuth Dynamic Delivery
