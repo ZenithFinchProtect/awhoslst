@@ -1451,21 +1451,38 @@
         }
 
         // ── Top-level navigation (Home / Panel) ──
-        function unlockPanel(e) {
+        async function unlockPanel(e) {
             e.preventDefault();
             const input = document.getElementById('panelPasswordInput');
             const err = document.getElementById('panelGateError');
-            if (input.value === 'NordicNFA2026') {
-                document.getElementById('panelGate').style.display = 'none';
-                document.getElementById('panelContent').classList.add('unlocked');
-                err.style.display = 'none';
-                loadDashboard();
-                populateDropdowns();
-            } else {
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = '...';
+            try {
+                const res = await fetch('/api/v1/panel-auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: input.value })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    document.getElementById('panelGate').style.display = 'none';
+                    document.getElementById('panelContent').classList.add('unlocked');
+                    err.style.display = 'none';
+                    sessionStorage.setItem('nfa_panel_auth', input.value);
+                    loadDashboard();
+                    populateDropdowns();
+                } else {
+                    err.style.display = 'block';
+                    input.value = '';
+                    input.focus();
+                }
+            } catch {
+                err.textContent = 'Network error';
                 err.style.display = 'block';
-                input.value = '';
-                input.focus();
             }
+            btn.disabled = false;
+            btn.textContent = 'Unlock';
             return false;
         }
 
