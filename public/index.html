@@ -1952,45 +1952,75 @@
             document.getElementById('customerOutput').classList.remove('show');
 
             try {
-                let r;
                 if (currentModalAction === 'download') {
-                    // Build the loader for an already-activated key.
-                    setCustomerProgress('Preparing your loader…');
-                    r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
+                    // Single-request loader: worker handles activate + build
+                    // server-side and streams the binary EXE back directly.
+                    setCustomerProgress('Preparing your loader — first-time keys are activated automatically…');
 
-                    // A freshly-generated key has no activation yet, so create_exe
-                    // returns "Activation not found". Activate it once, then retry.
-                    if (!r.ok && /activation not found/i.test(r.data?.message || '')) {
-                        setCustomerProgress('Activating your key — this can take up to 2 minutes. Please keep this window open…');
-                        const act = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
-                        if (act.ok) {
-                            setCustomerProgress('Activated! Building your loader…');
-                            r = await api('POST', '/api/v1/create_exe', { activation_key: key }, 130000);
-                        } else {
-                            r = act;
-                        }
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 150000);
+
+                    const res = await fetch('/api/v1/loader', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ activation_key: key }),
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timer);
+
+                    if (!res.ok) {
+                        // Error responses come back as JSON.
+                        const err = await res.json().catch(() => ({ message: 'Download failed' }));
+                        setCustomerProgress(null);
+                        showOutput('customer', err, false);
+                        toast(err.message || 'Download failed', 'error');
+                    } else {
+                        // Success — binary EXE blob.
+                        const blob = await res.blob();
+                        const disposition = res.headers.get('Content-Disposition') || '';
+                        const match = disposition.match(/filename="?([^"]+)"?/);
+                        const filename = match ? match[1] : 'loader.exe';
+
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+
+                        setCustomerProgress(null);
+                        showOutput('customer', { status: 'success', message: 'Loader downloaded', filename }, true);
+                        toast('Loader downloaded successfully', 'success');
                     }
                 } else {
+                    // Activate-only action (no download).
                     setCustomerProgress('Activating your key — this can take up to 2 minutes. Please keep this window open…');
-                    r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
-                }
+                    const r = await api('POST', '/api/v1/activate', { activation_key: key }, 130000);
 
-                setCustomerProgress(null);
+                    setCustomerProgress(null);
 
-                const display = { ...r.data };
-                if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
-                
-                showOutput('customer', display, r.ok);
+                    const display = { ...r.data };
+                    if (display.exe_base64) display.exe_base64 = `[${display.exe_base64.length} chars — downloading...]`;
+                    showOutput('customer', display, r.ok);
 
-                if (r.ok && r.data.exe_base64) {
-                    downloadExe(r.data.exe_base64, r.data.exe_filename);
-                    toast('Loader downloaded successfully', 'success');
-                } else if (!r.ok) {
-                    toast(r.data.message || 'Action failed', 'error');
+                    if (r.ok && r.data.exe_base64) {
+                        downloadExe(r.data.exe_base64, r.data.exe_filename);
+                        toast('Loader downloaded successfully', 'success');
+                    } else if (r.ok) {
+                        toast('Key activated successfully', 'success');
+                    } else {
+                        toast(r.data.message || 'Activation failed', 'error');
+                    }
                 }
             } catch (err) {
                 setCustomerProgress(null);
-                toast('Error: ' + err.message, 'error');
+                if (err.name === 'AbortError') {
+                    toast('Request timed out — please try again', 'error');
+                } else {
+                    toast('Error: ' + err.message, 'error');
+                }
             }
             
             btn.disabled = false;
