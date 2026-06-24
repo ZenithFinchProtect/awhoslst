@@ -1098,96 +1098,45 @@
                         <p class="section-desc">Post a live stock embed to a Discord webhook on a schedule</p>
                     </div>
 
-                    <div class="grid-2">
-                        <!-- Settings -->
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">⚙️</span> Settings</div>
-                            </div>
-
-                            <div class="form-group" style="display:flex;align-items:center;gap:10px">
-                                <input type="checkbox" id="sbEnabled" style="width:auto;margin:0">
-                                <label class="form-label" for="sbEnabled" style="margin:0">Enabled (send automatically on schedule)</label>
-                            </div>
-
-                            <div class="form-group">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                                    <label class="form-label" style="margin:0">Reseller Discord Webhooks</label>
-                                    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="addWebhook()">+ Add webhook</button>
-                                </div>
-                                <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Every enabled webhook receives the stock update. Give each reseller a name so you can tell them apart.</p>
-                                <div id="sbWebhooks"></div>
-                            </div>
-
-                            <div class="grid-2">
-                                <div class="form-group">
-                                    <label class="form-label">Update every (minutes)</label>
-                                    <input type="number" class="form-input" id="sbInterval" min="1" value="60">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Cap stock display at (0 = no cap)</label>
-                                    <input type="number" class="form-input" id="sbCap" min="0" value="5">
-                                </div>
-                            </div>
-
-                            <div class="grid-2">
-                                <div class="form-group">
-                                    <label class="form-label">Bot name</label>
-                                    <input type="text" class="form-input" id="sbUsername" placeholder="Stock alert">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Avatar URL (optional)</label>
-                                    <input type="text" class="form-input" id="sbAvatarUrl" placeholder="https://...">
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Embed title</label>
-                                <input type="text" class="form-input" id="sbTitle" placeholder="📊 Stock Update Alert">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Note / description</label>
-                                <input type="text" class="form-input" id="sbNote" placeholder="If the stock exceeds 5, it will be displayed as 5">
-                            </div>
-
-                            <div class="btn-group">
-                                <button class="btn btn-primary" id="sbSaveBtn" onclick="saveStockBotConfig()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">💾 Save Config</span>
-                                </button>
-                                <button class="btn btn-secondary" id="sbSendBtn" onclick="sendStockTest()">
-                                    <span class="spinner"></span>
-                                    <span class="btn-text">📨 Send Now (test)</span>
-                                </button>
-                                <button class="btn btn-secondary" onclick="loadStockBotConfig()">↻ Reload</button>
-                            </div>
-
-                            <div class="output" id="sbOutput">
-                                <div class="output-header">
-                                    <span class="output-title">Result</span>
-                                    <span class="output-status" id="sbStatus"></span>
-                                </div>
-                                <div class="output-body" id="sbBody"></div>
-                            </div>
+                    <!-- Global controls -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">⚙️</span> Settings</div>
+                            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="addWebhook()">+ Add webhook</button>
                         </div>
 
-                        <!-- Products / groups -->
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📦</span> Products to show</div>
-                                <div style="display:flex;gap:6px">
-                                    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="selectAllProducts()">✓ Select all</button>
-                                    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="addStockGroup()">+ Add product</button>
-                                </div>
+                        <div class="form-group" style="display:flex;align-items:center;gap:10px">
+                            <input type="checkbox" id="sbEnabled" style="width:auto;margin:0">
+                            <label class="form-label" for="sbEnabled" style="margin:0">Enabled (master switch — must be on for scheduled sends)</label>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">
+                            Each webhook below has its own products, schedule (interval), and appearance — they are completely independent.
+                            Refresh the dashboard once so the live stock-key list is populated.
+                        </p>
+
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="sbSaveBtn" onclick="saveStockBotConfig()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">💾 Save Config</span>
+                            </button>
+                            <button class="btn btn-secondary" id="sbSendBtn" onclick="sendStockTest()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">📨 Send all now (test)</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="loadStockBotConfig()">↻ Reload</button>
+                        </div>
+
+                        <div class="output" id="sbOutput">
+                            <div class="output-header">
+                                <span class="output-title">Result</span>
+                                <span class="output-status" id="sbStatus"></span>
                             </div>
-                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
-                                Each product is one section in the embed. Add rows under it and pick the live stock key for each row.
-                                Refresh the dashboard once so the stock-key list is populated.
-                            </p>
-                            <div id="sbGroups"></div>
+                            <div class="output-body" id="sbBody"></div>
                         </div>
                     </div>
+
+                    <!-- Per-webhook editor cards -->
+                    <div id="sbWebhooks"></div>
                 </div>
 
             </div>
@@ -2035,46 +1984,40 @@
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        //  STOCK BOT
+        //  STOCK BOT  (per-webhook settings)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let stockGroups = [];     // working copy of config.groups
-        let stockWebhooks = [];   // working copy of config.webhooks
+        // Each webhook is fully independent: its own products, interval,
+        // appearance (title/note/cap/color/timestamp/bot name/avatar) and URL.
+        let stockWebhooks = [];   // working copy of config.webhooks (each carries .groups + settings)
         let stockBotLoaded = false;
 
         function newId() {
             return (crypto.randomUUID && crypto.randomUUID()) || ('wh_' + Math.random().toString(36).slice(2));
         }
 
-        // ── Reseller webhooks ──
-        function renderWebhooks() {
-            const container = document.getElementById('sbWebhooks');
-            if (!stockWebhooks.length) {
-                container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No webhooks yet. Click "+ Add webhook".</p>';
-                return;
-            }
-            container.innerHTML = stockWebhooks.map((w, i) => `
-                <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg-secondary)">
-                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-                        <input type="text" class="form-input" style="flex:0 0 32%" placeholder="Reseller name"
-                            value="${escapeHtml(w.name)}" oninput="updateWebhook(${i},'name',this.value)">
-                        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);white-space:nowrap">
-                            <input type="checkbox" style="width:auto;margin:0" ${w.enabled !== false ? 'checked' : ''} onchange="updateWebhook(${i},'enabled',this.checked)"> enabled
-                        </label>
-                        <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px;margin-left:auto" onclick="removeWebhook(${i})">✕</button>
-                    </div>
-                    <input type="text" class="form-input" placeholder="${w.urlSet ? 'Webhook set (' + escapeHtml(w.urlHint || '••••') + ') — leave blank to keep' : 'https://discord.com/api/webhooks/...'}"
-                        value="${escapeHtml(w.url || '')}" oninput="updateWebhook(${i},'url',this.value)">
-                </div>
-            `).join('');
-        }
-        function addWebhook() { stockWebhooks.push({ id: newId(), name: '', url: '', enabled: true, urlSet: false, urlHint: '' }); renderWebhooks(); }
-        function removeWebhook(i) { stockWebhooks.splice(i, 1); renderWebhooks(); }
-        function updateWebhook(i, field, value) { stockWebhooks[i][field] = value; }
-
         function escapeHtml(s) {
             return String(s ?? '').replace(/[&<>"']/g, c => (
                 { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
             ));
+        }
+
+        function intToHex(n) {
+            const v = Number.isFinite(n) ? Math.max(0, Math.min(0xffffff, Math.round(n))) : 3447003;
+            return '#' + v.toString(16).padStart(6, '0');
+        }
+        function hexToInt(hex) {
+            const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || '').trim());
+            return m ? parseInt(m[1], 16) : 3447003;
+        }
+
+        // A brand-new webhook starts from sensible defaults.
+        function defaultWebhook() {
+            return {
+                id: newId(), name: '', url: '', enabled: true, urlSet: false, urlHint: '',
+                intervalMinutes: 60, username: 'Stock alert', avatarUrl: '',
+                title: '📊 Stock Update Alert', note: 'If the stock exceeds 5, it will be displayed as 5',
+                cap: 5, color: 3447003, showTimestamp: true, groups: [],
+            };
         }
 
         // Build the <option> list for a row's stock-key picker.
@@ -2091,50 +2034,6 @@
             return opts.join('');
         }
 
-        // Render the working stockGroups into the #sbGroups container.
-        function renderStockGroups() {
-            const container = document.getElementById('sbGroups');
-            if (!stockGroups.length) {
-                container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No products yet. Click "+ Add product" to start.</p>';
-                return;
-            }
-            container.innerHTML = stockGroups.map((g, gi) => {
-                const rows = (g.rows || []).map((r, ri) => `
-                    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-                        <input type="text" class="form-input" style="flex:0 0 38%" placeholder="Row label (e.g. HQ 0 - 100 Hours)"
-                            value="${escapeHtml(r.label)}" oninput="updateStockRow(${gi},${ri},'label',this.value)">
-                        <select class="form-input" style="flex:1" onchange="updateStockRow(${gi},${ri},'key',this.value)">
-                            ${stockKeyOptions(r.key)}
-                        </select>
-                        <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeStockRow(${gi},${ri})">✕</button>
-                    </div>
-                `).join('');
-                return `
-                    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--bg-secondary)">
-                        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-                            <input type="text" class="form-input" style="flex:0 0 80px" placeholder="Emoji"
-                                value="${escapeHtml(g.emoji)}" oninput="updateStockGroup(${gi},'emoji',this.value)">
-                            <input type="text" class="form-input" style="flex:1" placeholder="Product name (e.g. Rust HQ)"
-                                value="${escapeHtml(g.title)}" oninput="updateStockGroup(${gi},'title',this.value)">
-                            <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeStockGroup(${gi})">Delete</button>
-                        </div>
-                        ${rows}
-                        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;margin-top:4px" onclick="addStockRow(${gi})">+ Add row</button>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function addStockGroup() {
-            stockGroups.push({ title: '', emoji: '', rows: [{ label: 'Account', key: '' }] });
-            renderStockGroups();
-        }
-        function removeStockGroup(gi) { stockGroups.splice(gi, 1); renderStockGroups(); }
-        function updateStockGroup(gi, field, value) { stockGroups[gi][field] = value; }
-        function addStockRow(gi) { stockGroups[gi].rows.push({ label: '', key: '' }); renderStockGroups(); }
-        function removeStockRow(gi, ri) { stockGroups[gi].rows.splice(ri, 1); renderStockGroups(); }
-        function updateStockRow(gi, ri, field, value) { stockGroups[gi].rows[ri][field] = value; }
-
         // Build a human-friendly row label from a stock key, dropping the game prefix.
         function humanizeKey(key, prefix) {
             let s = key;
@@ -2143,9 +2042,146 @@
             return s.replace(/\bHours\b/i, 'Hours').replace(/\bElo\b/i, 'ELO') || key;
         }
 
+        // Render the product groups for a single webhook (index wi) as HTML.
+        function renderGroups(wi) {
+            const groups = stockWebhooks[wi].groups || [];
+            if (!groups.length) {
+                return '<p style="color:var(--text-muted);font-size:13px">No products yet. Click "+ Add product".</p>';
+            }
+            return groups.map((g, gi) => {
+                const rows = (g.rows || []).map((r, ri) => `
+                    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+                        <input type="text" class="form-input" style="flex:0 0 38%" placeholder="Row label (e.g. HQ 0 - 100 Hours)"
+                            value="${escapeHtml(r.label)}" oninput="updateStockRow(${wi},${gi},${ri},'label',this.value)">
+                        <select class="form-input" style="flex:1" onchange="updateStockRow(${wi},${gi},${ri},'key',this.value)">
+                            ${stockKeyOptions(r.key)}
+                        </select>
+                        <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeStockRow(${wi},${gi},${ri})">✕</button>
+                    </div>
+                `).join('');
+                return `
+                    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;background:var(--bg-primary)">
+                        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+                            <input type="text" class="form-input" style="flex:0 0 70px" placeholder="Emoji"
+                                value="${escapeHtml(g.emoji)}" oninput="updateStockGroup(${wi},${gi},'emoji',this.value)">
+                            <input type="text" class="form-input" style="flex:1" placeholder="Product name (e.g. Rust HQ)"
+                                value="${escapeHtml(g.title)}" oninput="updateStockGroup(${wi},${gi},'title',this.value)">
+                            <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeStockGroup(${wi},${gi})">Delete</button>
+                        </div>
+                        ${rows}
+                        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;margin-top:4px" onclick="addStockRow(${wi},${gi})">+ Add row</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Render every webhook as a self-contained editor card.
+        function renderWebhooks() {
+            const container = document.getElementById('sbWebhooks');
+            if (!stockWebhooks.length) {
+                container.innerHTML = '<div class="card"><p style="color:var(--text-muted);font-size:13px;margin:0">No webhooks yet. Click "+ Add webhook" above to create one.</p></div>';
+                return;
+            }
+            container.innerHTML = stockWebhooks.map((w, i) => `
+                <div class="card" style="margin-bottom:16px">
+                    <div class="card-header">
+                        <div style="display:flex;gap:8px;align-items:center;flex:1;min-width:0">
+                            <input type="text" class="form-input" style="flex:0 0 40%" placeholder="Reseller name"
+                                value="${escapeHtml(w.name)}" oninput="updateWebhook(${i},'name',this.value)">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);white-space:nowrap">
+                                <input type="checkbox" style="width:auto;margin:0" ${w.enabled !== false ? 'checked' : ''} onchange="updateWebhook(${i},'enabled',this.checked)"> enabled
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:6px">
+                            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="sendStockTest(${i})">📨 Send this (test)</button>
+                            <button class="btn btn-secondary" style="padding:6px 10px;font-size:12px" onclick="removeWebhook(${i})">✕</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Discord webhook URL</label>
+                        <input type="text" class="form-input" placeholder="${w.urlSet ? 'Webhook set (' + escapeHtml(w.urlHint || '••••') + ') — leave blank to keep' : 'https://discord.com/api/webhooks/...'}"
+                            value="${escapeHtml(w.url || '')}" oninput="updateWebhook(${i},'url',this.value)">
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label">Update every (minutes)</label>
+                            <input type="number" class="form-input" min="1" value="${w.intervalMinutes ?? 60}" oninput="updateWebhook(${i},'intervalMinutes',this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Cap stock display at (0 = no cap)</label>
+                            <input type="number" class="form-input" min="0" value="${w.cap ?? 0}" oninput="updateWebhook(${i},'cap',this.value)">
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label">Bot name</label>
+                            <input type="text" class="form-input" placeholder="Stock alert" value="${escapeHtml(w.username || '')}" oninput="updateWebhook(${i},'username',this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Avatar URL (optional)</label>
+                            <input type="text" class="form-input" placeholder="https://..." value="${escapeHtml(w.avatarUrl || '')}" oninput="updateWebhook(${i},'avatarUrl',this.value)">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Embed title</label>
+                        <input type="text" class="form-input" placeholder="📊 Stock Update Alert" value="${escapeHtml(w.title || '')}" oninput="updateWebhook(${i},'title',this.value)">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Note / description</label>
+                        <input type="text" class="form-input" placeholder="If the stock exceeds 5, it will be displayed as 5" value="${escapeHtml(w.note || '')}" oninput="updateWebhook(${i},'note',this.value)">
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label">Embed color</label>
+                            <input type="color" class="form-input" style="height:42px;padding:4px" value="${intToHex(w.color)}" oninput="updateWebhook(${i},'color',this.value)">
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:flex-end;gap:10px;padding-bottom:10px">
+                            <input type="checkbox" style="width:auto;margin:0" ${w.showTimestamp !== false ? 'checked' : ''} onchange="updateWebhook(${i},'showTimestamp',this.checked)">
+                            <label class="form-label" style="margin:0">Show timestamp</label>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 10px">
+                        <label class="form-label" style="margin:0"><span class="icon">📦</span> Products for this webhook</label>
+                        <div style="display:flex;gap:6px">
+                            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="selectAllProducts(${i})">✓ Select all</button>
+                            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="addStockGroup(${i})">+ Add product</button>
+                        </div>
+                    </div>
+                    <div>${renderGroups(i)}</div>
+                </div>
+            `).join('');
+        }
+
+        function addWebhook() { stockWebhooks.push(defaultWebhook()); renderWebhooks(); }
+        function removeWebhook(i) { stockWebhooks.splice(i, 1); renderWebhooks(); }
+        function updateWebhook(i, field, value) {
+            if (field === 'color') value = hexToInt(value);
+            else if (field === 'intervalMinutes' || field === 'cap') value = parseInt(value, 10);
+            stockWebhooks[i][field] = value;
+        }
+
+        // ── Per-webhook product builders (wi = webhook index) ──
+        function addStockGroup(wi) {
+            if (!Array.isArray(stockWebhooks[wi].groups)) stockWebhooks[wi].groups = [];
+            stockWebhooks[wi].groups.push({ title: '', emoji: '', rows: [{ label: 'Account', key: '' }] });
+            renderWebhooks();
+        }
+        function removeStockGroup(wi, gi) { stockWebhooks[wi].groups.splice(gi, 1); renderWebhooks(); }
+        function updateStockGroup(wi, gi, field, value) { stockWebhooks[wi].groups[gi][field] = value; }
+        function addStockRow(wi, gi) { stockWebhooks[wi].groups[gi].rows.push({ label: '', key: '' }); renderWebhooks(); }
+        function removeStockRow(wi, gi, ri) { stockWebhooks[wi].groups[gi].rows.splice(ri, 1); renderWebhooks(); }
+        function updateStockRow(wi, gi, ri, field, value) { stockWebhooks[wi].groups[gi].rows[ri][field] = value; }
+
         // "Select all" — auto-build product groups from every live stock key,
-        // grouped by game prefix. Replaces the current product list.
-        function selectAllProducts() {
+        // grouped by game prefix. Replaces this webhook's product list.
+        function selectAllProducts(wi) {
             if (!stockKeys.length) { toast('No live stock keys loaded yet — open the Dashboard once.', 'error'); return; }
             const meta = {
                 rust: { title: 'Rust', emoji: '🪓' },
@@ -2162,7 +2198,7 @@
                 if (!byPrefix[prefix]) { byPrefix[prefix] = []; order.push(prefix); }
                 byPrefix[prefix].push(key);
             });
-            stockGroups = order.map(prefix => {
+            stockWebhooks[wi].groups = order.map(prefix => {
                 const m = meta[prefix] || { title: prefix.toUpperCase(), emoji: '📦' };
                 return {
                     title: m.title,
@@ -2170,7 +2206,7 @@
                     rows: byPrefix[prefix].map(key => ({ label: humanizeKey(key, prefix), key })),
                 };
             });
-            renderStockGroups();
+            renderWebhooks();
             toast(`Added ${stockKeys.length} products across ${order.length} groups`, 'success');
         }
 
@@ -2181,7 +2217,7 @@
                 if (r.ok && r.data.stock) stockKeys = Object.keys(r.data.stock);
             } catch (e) { /* keys are optional; free-typed keys still work */ }
             if (!stockBotLoaded) await loadStockBotConfig();
-            else renderStockGroups();
+            else renderWebhooks();
         }
 
         async function loadStockBotConfig() {
@@ -2191,16 +2227,9 @@
                 const c = r.data.config || {};
                 document.getElementById('sbEnabled').checked = !!c.enabled;
                 stockWebhooks = Array.isArray(c.webhooks) ? JSON.parse(JSON.stringify(c.webhooks)) : [];
-                renderWebhooks();
-                document.getElementById('sbInterval').value = c.intervalMinutes ?? 60;
-                document.getElementById('sbCap').value = c.cap ?? 0;
-                document.getElementById('sbUsername').value = c.username || '';
-                document.getElementById('sbAvatarUrl').value = c.avatarUrl || '';
-                document.getElementById('sbTitle').value = c.title || '';
-                document.getElementById('sbNote').value = c.note || '';
-                stockGroups = Array.isArray(c.groups) ? JSON.parse(JSON.stringify(c.groups)) : [];
+                stockWebhooks.forEach(w => { if (!Array.isArray(w.groups)) w.groups = []; });
                 stockBotLoaded = true;
-                renderStockGroups();
+                renderWebhooks();
             } catch (err) {
                 toast('Failed to load stock bot config: ' + err.message, 'error');
             }
@@ -2209,14 +2238,21 @@
         function collectStockConfig() {
             return {
                 enabled: document.getElementById('sbEnabled').checked,
-                webhooks: stockWebhooks.map(w => ({ id: w.id, name: w.name || '', url: w.url || '', enabled: w.enabled !== false })),
-                intervalMinutes: parseInt(document.getElementById('sbInterval').value, 10) || 60,
-                cap: parseInt(document.getElementById('sbCap').value, 10) || 0,
-                username: document.getElementById('sbUsername').value,
-                avatarUrl: document.getElementById('sbAvatarUrl').value.trim(),
-                title: document.getElementById('sbTitle').value,
-                note: document.getElementById('sbNote').value,
-                groups: stockGroups,
+                webhooks: stockWebhooks.map(w => ({
+                    id: w.id,
+                    name: w.name || '',
+                    url: w.url || '',
+                    enabled: w.enabled !== false,
+                    intervalMinutes: parseInt(w.intervalMinutes, 10) || 60,
+                    cap: parseInt(w.cap, 10) || 0,
+                    username: w.username || '',
+                    avatarUrl: (w.avatarUrl || '').trim(),
+                    title: w.title || '',
+                    note: w.note || '',
+                    color: Number.isFinite(w.color) ? w.color : hexToInt(w.color),
+                    showTimestamp: w.showTimestamp !== false,
+                    groups: w.groups || [],
+                })),
             };
         }
 
@@ -2233,19 +2269,23 @@
             setLoading('sbSaveBtn', false);
         }
 
-        async function sendStockTest() {
-            setLoading('sbSendBtn', true);
+        // Send a test. With no argument (or a non-number), sends ALL enabled
+        // webhooks; with a webhook index it tests just that one.
+        async function sendStockTest(wi) {
+            const single = typeof wi === 'number' && stockWebhooks[wi];
+            if (!single) setLoading('sbSendBtn', true);
             try {
                 // Save first so the test uses the current form values.
                 await api('POST', '/api/stock-bot/config', collectStockConfig());
-                const r = await api('POST', '/api/stock-bot/send', {}, 60000);
+                const body = single ? { webhookId: stockWebhooks[wi].id } : {};
+                const r = await api('POST', '/api/stock-bot/send', body, 60000);
                 showOutput('sb', r.data, r.ok && r.data.sent);
                 if (r.ok && r.data.sent) toast('Sent to Discord', 'success');
                 else toast('Not sent: ' + (r.data?.error || r.data?.reason || r.data?.message || 'unknown'), 'error');
             } catch (err) {
                 toast('Send failed: ' + err.message, 'error');
             }
-            setLoading('sbSendBtn', false);
+            if (!single) setLoading('sbSendBtn', false);
         }
 
         // ── Hash routing ──
