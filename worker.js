@@ -60,6 +60,18 @@ export default {
       return handleStockBotApi(request, env, url);
     }
 
+    // --- Public stock API (for Sellauth / external integrations) ---
+    // No auth required so Sellauth can poll stock counts.
+    //   GET /api/sellauth/stock           → full stock map
+    //   GET /api/sellauth/stock?type=X    → single product count
+    //   GET /api/public/stock             → alias
+    if (url.pathname === '/api/sellauth/stock' || url.pathname === '/api/public/stock') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      }
+      return handlePublicStock(request, env, url);
+    }
+
     // --- Panel auth endpoint: verify password server-side ---
     if (url.pathname === '/api/v1/panel-auth') {
       if (request.method === 'OPTIONS') {
@@ -187,6 +199,40 @@ async function handlePanelAuth(request, env, origin) {
     status: 200,
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+//  Public Stock API — /api/sellauth/stock, /api/public/stock
+//
+//  Returns live NFA stock counts without authentication so external platforms
+//  (Sellauth, Sellix, etc.) can poll product availability.
+//
+//  GET /api/sellauth/stock              → { "stock": { "type": count, ... } }
+//  GET /api/sellauth/stock?type=<name>  → { "type": "...", "stock": N, "in_stock": true }
+// ───────────────────────────────────────────────────────────────────────────
+
+async function handlePublicStock(request, env, url) {
+  if (request.method !== 'GET') {
+    return jsonResponse({ status: 'error', message: 'Method not allowed' }, 405);
+  }
+
+  if (!env.NFA_API_KEY) {
+    return jsonResponse({ status: 'error', message: 'Server configuration error' }, 500);
+  }
+
+  try {
+    const stock = await fetchNfaStock(env);
+    const type = url.searchParams.get('type') || url.searchParams.get('account_type');
+
+    if (type) {
+      const count = lookupStock(stock, type);
+      return jsonResponse({ type, stock: count, in_stock: count > 0 });
+    }
+
+    return jsonResponse({ stock });
+  } catch (err) {
+    return jsonResponse({ status: 'error', message: err.message }, 502);
+  }
 }
 
 //  RTT vs hundreds of ms from the end-user). Returns the EXE as a binary
