@@ -959,24 +959,13 @@
                         </button>
                     </div>
 
-                    <div class="grid-2">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📦</span> Account Types</div>
-                                <span class="card-badge badge-get">GET</span>
-                            </div>
-                            <div id="accountsTable">
-                                <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
-                            </div>
+                    <div class="card" style="margin-bottom:20px">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📦</span> NFA Stock &amp; Pricing</div>
+                            <span class="card-badge badge-live">LIVE</span>
                         </div>
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📈</span> Live Stock</div>
-                                <span class="card-badge badge-live">LIVE</span>
-                            </div>
-                            <div id="stockTable">
-                                <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
-                            </div>
+                        <div id="nfaStockTable">
+                            <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
                         </div>
                     </div>
 
@@ -1195,6 +1184,31 @@
                                 </div>
                                 <div class="output-body" id="createExeBody"></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 20px">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔄</span> Request Replacement (3-Day Warranty)</div>
+                            <span class="card-badge badge-post">POST</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Check an activated key and request a replacement if the account is invalid within the 3-day warranty window.</p>
+                        <div class="form-group">
+                            <label class="form-label">Activation Key</label>
+                            <input type="text" class="form-input" id="replacementKey" placeholder="Enter activation key">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="replacementBtn" onclick="requestReplacement()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Check &amp; Replace</span>
+                            </button>
+                        </div>
+                        <div class="output" id="replacementOutput">
+                            <div class="output-header">
+                                <span class="output-title">Result</span>
+                                <span class="output-status" id="replacementStatus"></span>
+                            </div>
+                            <div class="output-body" id="replacementBody"></div>
                         </div>
                     </div>
 
@@ -1680,25 +1694,25 @@
                     }
                 }
 
-                if (accountsRes.ok && accountsRes.data.accounts) {
-                    accountTypes = Object.keys(accountsRes.data.accounts);
-                    let html = '<table class="data-table"><tr><th>Account Type</th><th>Sell Price</th></tr>';
-                    Object.entries(accountsRes.data.accounts).forEach(([name, price]) => {
-                        html += `<tr><td>${name}</td><td style="color:var(--success)">$${price}</td></tr>`;
-                    });
-                    html += '</table>';
-                    document.getElementById('accountsTable').innerHTML = html;
-                }
+                // Merge accounts + stock into a single table
+                const accounts = (accountsRes.ok && accountsRes.data.accounts) ? accountsRes.data.accounts : {};
+                const stockData = (stockRes.ok && stockRes.data.stock) ? stockRes.data.stock : {};
+                accountTypes = Object.keys(accounts);
+                if (stockRes.ok && stockRes.data.stock) stockKeys = Object.keys(stockRes.data.stock);
 
-                if (stockRes.ok && stockRes.data.stock) {
-                    stockKeys = Object.keys(stockRes.data.stock);
-                    let html = '<table class="data-table"><tr><th>Account Type</th><th>In Stock</th></tr>';
-                    Object.entries(stockRes.data.stock).forEach(([name, count]) => {
-                        const color = count > 0 ? 'var(--success)' : 'var(--error)';
-                        html += `<tr><td>${name}</td><td style="color:${color};font-weight:600">${count}</td></tr>`;
+                const allTypes = new Set([...Object.keys(accounts), ...Object.keys(stockData)]);
+                if (allTypes.size) {
+                    let html = '<table class="data-table"><tr><th>Account Type</th><th>Sell Price</th><th>In Stock</th></tr>';
+                    [...allTypes].forEach(name => {
+                        const price = accounts[name];
+                        const count = stockData[name];
+                        const priceStr = price != null ? `$${price}` : '\u2014';
+                        const countStr = count != null ? count : '\u2014';
+                        const countColor = count > 0 ? 'var(--success)' : (count === 0 ? 'var(--error)' : 'var(--text-muted)');
+                        html += `<tr><td>${name}</td><td style="color:var(--success)">${priceStr}</td><td style="color:${countColor};font-weight:600">${countStr}</td></tr>`;
                     });
                     html += '</table>';
-                    document.getElementById('stockTable').innerHTML = html;
+                    document.getElementById('nfaStockTable').innerHTML = html;
                 }
 
                 toast('Dashboard loaded', 'success');
@@ -1958,14 +1972,23 @@
                     const dateTd = document.createElement('td');
                     dateTd.textContent = formatDate(k.date);
 
-                    const copyTd = document.createElement('td');
-                    const btn = document.createElement('button');
-                    btn.className = 'copy-btn';
-                    btn.textContent = 'Copy';
-                    btn.onclick = () => copyToClipboard(k.key, btn);
-                    copyTd.appendChild(btn);
+                    const actionsTd = document.createElement('td');
+                    actionsTd.style.whiteSpace = 'nowrap';
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = 'Copy';
+                    copyBtn.onclick = () => copyToClipboard(k.key, copyBtn);
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'copy-btn';
+                    delBtn.style.marginLeft = '6px';
+                    delBtn.style.color = 'var(--error)';
+                    delBtn.style.borderColor = 'rgba(239,68,68,0.3)';
+                    delBtn.textContent = 'Delete';
+                    delBtn.onclick = () => deleteKey(k.key);
+                    actionsTd.appendChild(copyBtn);
+                    actionsTd.appendChild(delBtn);
 
-                    tr.append(keyTd, typeTd, statusTd, dateTd, copyTd);
+                    tr.append(keyTd, typeTd, statusTd, dateTd, actionsTd);
                     tbody.appendChild(tr);
                 });
             }
@@ -2029,6 +2052,63 @@
                 toast('Error: ' + err.message, 'error');
             }
             setLoading('checkAccountBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  DELETE KEY
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function deleteKey(key) {
+            if (!confirm(`Delete key "${key}"? This cannot be undone.`)) return;
+            try {
+                const r = await api('DELETE', '/api/v1/delete_key', { activation_key: key });
+                if (r.ok) {
+                    toast('Key deleted', 'success');
+                    loadAllKeys(true);
+                } else {
+                    toast(r.data?.message || 'Delete failed', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  REQUEST REPLACEMENT (WARRANTY)
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function requestReplacement() {
+            const key = document.getElementById('replacementKey').value.trim();
+            if (!key) return toast('Enter an activation key', 'error');
+
+            setLoading('replacementBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/check_account', { activation_key: key });
+
+                if (r.ok) {
+                    const result = r.data.result;
+                    if (result === 'valid') {
+                        showOutput('replacement', r.data, true);
+                        toast('Account is VALID — no replacement needed', 'success');
+                    } else if (result === 'replaced') {
+                        const newKey = r.data.replacement_key || r.data.replacementKey || '';
+                        const display = { ...r.data };
+                        if (newKey) {
+                            display.message = `Account replaced! New key: ${newKey}`;
+                            display.keys = [newKey];
+                        }
+                        showOutput('replacement', display, true);
+                        toast(newKey ? 'Replacement key issued — see below' : 'Account replaced — check response', 'success');
+                    } else {
+                        showOutput('replacement', r.data, false);
+                        toast('Account INVALID — may be outside warranty window', 'error');
+                    }
+                } else {
+                    showOutput('replacement', r.data, false);
+                    toast(r.data?.message || 'Check failed', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('replacementBtn', false);
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
