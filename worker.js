@@ -730,7 +730,51 @@ const DEFAULT_STOCK_CONFIG = {
   cap: 5, // 0 / null = no cap
   color: 3447003, // Discord blurple-ish blue
   showTimestamp: true,
-  groups: [],
+  groups: [
+    {
+      title: 'CS2',
+      emoji: '🔫',
+      rows: [
+        { label: 'Premier 15k-20k', key: 'cs2_premier_15k_20k' },
+        { label: 'Premier 20k-30k', key: 'cs2_premier_20k_30k' },
+        { label: 'Knifes and Gloves', key: 'cs2_knifes_gloves' },
+        { label: '$500 Inventory', key: 'cs2_500_inv' },
+        { label: '$1000 Inventory', key: 'cs2_1000_inv' },
+      ],
+    },
+    {
+      title: 'Rust',
+      emoji: '🪓',
+      rows: [
+        { label: 'Rust 2000-3000 Hours', key: 'rust_2000_3000_hours' },
+        { label: 'Rust 3000-7000 Hours', key: 'rust_3000_7000_hours' },
+        { label: 'Rust 7000+ Hours', key: 'rust_7000_plus_hours' },
+      ],
+    },
+    {
+      title: 'Rust Inactive 5D',
+      emoji: '🪓',
+      rows: [
+        { label: 'Rust Inactive 5D 500 Hours', key: 'rust_inactive_5d_500_hours' },
+        { label: 'Rust Inactive 5D 1000 Hours', key: 'rust_inactive_5d_1000_hours' },
+      ],
+    },
+    {
+      title: 'Rust Inactive 15D',
+      emoji: '🪓',
+      rows: [
+        { label: 'Rust Inactive 15D 500 Hours', key: 'rust_inactive_15d_500_hours' },
+        { label: 'Rust Inactive 15D 1000 Hours', key: 'rust_inactive_15d_1000_hours' },
+      ],
+    },
+    {
+      title: 'Arc',
+      emoji: '🛸',
+      rows: [
+        { label: 'Arc Inactive 15D 200+ Hours', key: 'arc_inactive_15d_200_plus_hours' },
+      ],
+    },
+  ],
   lastSentAt: 0,
 };
 
