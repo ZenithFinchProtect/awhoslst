@@ -4,6 +4,15 @@
 
 const NFA_ORIGIN = 'https://nfa-api.acode.ing';
 
+// Shown when a key is activated against a product that has no stock left.
+const RESTOCK_MESSAGE = 'Please wait for restock — this product is currently out of stock.';
+
+// True when an upstream error means activation failed because there is no
+// stock available to assign to the key (rather than an invalid key).
+function isOutOfStock(message) {
+  return /out\s*of\s*stock|no\s+stock|sold\s*out|restock|activation\s+not\s+found|not\s+activated/i.test(message || '');
+}
+
 // Leave empty to allow all origins.
 const ALLOWED_ORIGINS = new Set(['*']);
 
@@ -260,7 +269,8 @@ async function handleLoaderEndpoint(request, env, origin) {
       const actData = await actRes.json();
 
       if (!actRes.ok) {
-        return jsonErr(actRes.status, actData.message || 'Activation failed');
+        const m = actData.message || 'Activation failed';
+        return jsonErr(actRes.status, isOutOfStock(m) ? RESTOCK_MESSAGE : m);
       }
 
       // Some NFA versions return the EXE directly from activate.
@@ -276,7 +286,8 @@ async function handleLoaderEndpoint(request, env, origin) {
         const exeJson = await exeRes.json();
         if (!exeRes.ok || !exeJson.exe_base64) {
           const s = exeRes.ok ? 422 : (exeRes.status || 500);
-          return jsonErr(s, exeJson.message || 'Failed to build loader');
+          const m = exeJson.message || 'Failed to build loader';
+          return jsonErr(s, isOutOfStock(m) ? RESTOCK_MESSAGE : m);
         }
         exeData = exeJson;
       }

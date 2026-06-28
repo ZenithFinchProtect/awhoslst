@@ -7,6 +7,15 @@
 
 const NFA_ORIGIN = 'https://nfa-api.acode.ing';
 
+// Shown when a key is activated against a product that has no stock left.
+const RESTOCK_MESSAGE = 'Please wait for restock — this product is currently out of stock.';
+
+// True when an upstream error means activation failed because there is no
+// stock available to assign to the key (rather than an invalid key).
+function isOutOfStock(message) {
+    return /out\s*of\s*stock|no\s+stock|sold\s*out|restock|activation\s+not\s+found|not\s+activated/i.test(message || '');
+}
+
 export async function onRequest(context) {
     const { request, env } = context;
 
@@ -68,7 +77,8 @@ export async function onRequest(context) {
             const actData = await actRes.json();
 
             if (!actRes.ok) {
-                return jsonResp(actRes.status, actData.message || 'Activation failed');
+                const m = actData.message || 'Activation failed';
+                return jsonResp(actRes.status, isOutOfStock(m) ? RESTOCK_MESSAGE : m);
             }
 
             if (actData.exe_base64) {
@@ -82,7 +92,8 @@ export async function onRequest(context) {
                 const exeJson = await exeRes.json();
                 if (!exeRes.ok || !exeJson.exe_base64) {
                     const s = exeRes.ok ? 422 : (exeRes.status || 500);
-                    return jsonResp(s, exeJson.message || 'Failed to build loader');
+                    const m = exeJson.message || 'Failed to build loader';
+                    return jsonResp(s, isOutOfStock(m) ? RESTOCK_MESSAGE : m);
                 }
                 exeData = exeJson;
             }
