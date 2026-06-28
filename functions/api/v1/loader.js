@@ -8,7 +8,7 @@
 const NFA_ORIGIN = 'https://nfa-api.acode.ing';
 
 // Shown when a key is activated against a product that has no stock left.
-const RESTOCK_MESSAGE = 'Please wait for restock — this product is currently out of stock.';
+const RESTOCK_MESSAGE = 'SELECTED NFA OUT OF STOCK — USE SAME KEY WHEN AVAILABLE';
 
 // True when an upstream error means activation failed because there is no
 // stock available to assign to the key (rather than an invalid key).
