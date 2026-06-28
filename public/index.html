@@ -754,6 +754,8 @@
         .key-actions { display: flex; gap: 6px; justify-content: flex-end; }
         .copy-btn.btn-delete-key { border-color: var(--error); color: var(--error); }
         .copy-btn.btn-delete-key:hover { background: var(--error-dim); border-color: var(--error); color: var(--error); }
+        .copy-btn.btn-replace-key { border-color: var(--accent); color: var(--accent-bright); }
+        .copy-btn.btn-replace-key:hover { background: var(--accent-glow); border-color: var(--accent); color: var(--accent-bright); }
         .copy-btn.btn-delete-key:disabled { opacity: .55; cursor: default; }
 
         /* ── Key list ── */
@@ -1208,10 +1210,10 @@
                     <div class="grid-2">
                         <div class="card">
                             <div class="card-header">
-                                <div class="card-title"><span class="icon">✅</span> Check Account</div>
+                                <div class="card-title"><span class="icon">✅</span> Check / Replace <span style="font-size:11px;font-weight:600;color:var(--text-muted)">(3h warranty)</span></div>
                                 <span class="card-badge badge-post">POST</span>
                             </div>
-                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Re-validate an activated account. Returns valid / replaced / invalid.</p>
+                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Re-validate an activated account. If it's invalid and still inside the 3‑hour warranty, it's auto‑replaced and a new replacement key is returned. Returns valid / replaced / invalid.</p>
                             <div class="form-group">
                                 <label class="form-label">Activation Key</label>
                                 <input type="text" class="form-input" id="checkAccountKey" placeholder="Enter activation key">
@@ -1219,7 +1221,7 @@
                             <div class="btn-group">
                                 <button class="btn btn-primary" id="checkAccountBtn" onclick="checkAccount()">
                                     <span class="spinner"></span>
-                                    <span class="btn-text">Check</span>
+                                    <span class="btn-text">Check / Replace</span>
                                 </button>
                             </div>
                             <div class="output" id="checkAccountOutput">
@@ -2034,6 +2036,16 @@
                         copyTd.appendChild(del);
                     }
 
+                    // Activated keys can be replaced within the 3-hour warranty.
+                    if (k.status === 'activated') {
+                        const rep = document.createElement('button');
+                        rep.className = 'copy-btn btn-replace-key';
+                        rep.textContent = 'Replace';
+                        rep.title = 'Replace if invalid (within 3-hour warranty)';
+                        rep.onclick = () => replaceKey(k, rep);
+                        copyTd.appendChild(rep);
+                    }
+
                     tr.append(keyTd, typeTd, statusTd, dateTd, copyTd);
                     tbody.appendChild(tr);
                 });
@@ -2115,14 +2127,45 @@
 
                 if (r.ok) {
                     const result = r.data.result;
-                    if (result === 'valid') toast('Account is VALID', 'success');
-                    else if (result === 'replaced') toast('Account REPLACED — check replacement_key', 'info');
-                    else toast('Account INVALID — contact support', 'error');
+                    if (result === 'valid') toast('Account is VALID — no replacement needed', 'success');
+                    else if (result === 'replaced') {
+                        const repKey = r.data.replacement_key;
+                        toast(repKey ? ('Replaced — new key: ' + repKey) : 'Account REPLACED — check replacement_key', 'info');
+                    }
+                    else toast('Account INVALID — out of 3h warranty, contact support', 'error');
                 }
             } catch (err) {
                 toast('Error: ' + err.message, 'error');
             }
             setLoading('checkAccountBtn', false);
+        }
+
+        // ── Replace an activated key from the Keys table (3-hour warranty) ──
+        async function replaceKey(k, btn) {
+            if (!confirm(`Replace this key if it's invalid?\n\n${k.key}\n\nReplacement only works inside the 3‑hour warranty window. If the account is still valid, nothing changes.`)) return;
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Replacing…';
+            try {
+                const r = await api('POST', '/api/v1/check_account', { activation_key: k.key });
+                if (r.ok) {
+                    const result = r.data.result;
+                    if (result === 'replaced') {
+                        const repKey = r.data.replacement_key;
+                        toast(repKey ? ('Replaced — new key: ' + repKey) : 'Account REPLACED — check replacement_key', 'info');
+                    } else if (result === 'valid') {
+                        toast('Account still VALID — no replacement needed', 'success');
+                    } else {
+                        toast('Account INVALID — out of 3h warranty, contact support', 'error');
+                    }
+                } else {
+                    toast((r.data && r.data.message) || 'Failed to replace key', 'error');
+                }
+            } catch (err) {
+                toast('Failed to replace key: ' + err.message, 'error');
+            }
+            btn.disabled = false;
+            btn.textContent = original;
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
