@@ -696,6 +696,10 @@
             transition: var(--transition);
         }
         .copy-btn:hover { border-color: var(--accent); color: var(--accent-bright); }
+        .key-actions { display: flex; gap: 6px; justify-content: flex-end; }
+        .copy-btn.btn-delete-key { border-color: var(--error); color: var(--error); }
+        .copy-btn.btn-delete-key:hover { background: var(--error-dim); border-color: var(--error); color: var(--error); }
+        .copy-btn.btn-delete-key:disabled { opacity: .55; cursor: default; }
 
         /* ── Key list ── */
         .key-list {
@@ -1130,7 +1134,7 @@
                                         <th data-sort="account_type" onclick="sortKeysBy('account_type')">Account Type</th>
                                         <th data-sort="status" onclick="sortKeysBy('status')">Status</th>
                                         <th data-sort="date" onclick="sortKeysBy('date')">Date</th>
-                                        <th></th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="keysTableBody"></tbody>
@@ -1959,11 +1963,21 @@
                     dateTd.textContent = formatDate(k.date);
 
                     const copyTd = document.createElement('td');
+                    copyTd.className = 'key-actions';
                     const btn = document.createElement('button');
                     btn.className = 'copy-btn';
                     btn.textContent = 'Copy';
                     btn.onclick = () => copyToClipboard(k.key, btn);
                     copyTd.appendChild(btn);
+
+                    // Only unactivated keys can be deleted (NFA API restriction).
+                    if (k.status === 'unactivated') {
+                        const del = document.createElement('button');
+                        del.className = 'copy-btn btn-delete-key';
+                        del.textContent = 'Delete';
+                        del.onclick = () => deleteKey(k, del);
+                        copyTd.appendChild(del);
+                    }
 
                     tr.append(keyTd, typeTd, statusTd, dateTd, copyTd);
                     tbody.appendChild(tr);
@@ -2005,6 +2019,31 @@
             const rows = getFilteredKeys();
             if (!rows.length) return toast('No keys to copy', 'error');
             copyToClipboard(rows.map(k => k.key).join('\n'), btn);
+        }
+
+        // ── Delete an unactivated key (mirrors the Telegram bot's delete) ──
+        async function deleteKey(k, btn) {
+            if (!confirm(`Delete this unactivated key?\n\n${k.key}\n\nThis permanently removes it from stock and cannot be undone.`)) return;
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Deleting…';
+            try {
+                const r = await api('DELETE', '/api/v1/unactivated_keys', { activation_key: k.key });
+                if (r.ok) {
+                    allKeys = allKeys.filter(x => !(x.key === k.key && x.status === 'unactivated'));
+                    populateKeysTypeFilter();
+                    renderKeysTable();
+                    toast('Key deleted', 'success');
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = original;
+                    toast(r.data.message || 'Failed to delete key', 'error');
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = original;
+                toast('Failed to delete key: ' + err.message, 'error');
+            }
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
