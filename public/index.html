@@ -641,10 +641,65 @@
         @media (max-width: 900px) {
             .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
             .home-cards { grid-template-columns: 1fr; }
-            .navbar { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+            .navbar { padding: 12px 16px; gap: 12px; }
             .container { padding: 16px; }
             .hero-title { font-size: 32px; }
             .auth-input { width: 140px; }
+        }
+
+        /* Hide scrollbars on the horizontally-scrollable nav/tab strips */
+        .nav-links::-webkit-scrollbar,
+        .panel-tabs::-webkit-scrollbar { display: none; }
+
+        @media (max-width: 640px) {
+            /* Top nav: stack the logo above a horizontally-scrollable link row */
+            .navbar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+                padding: 12px 14px;
+            }
+            .logo { font-size: 16px; }
+            .nav-links {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                gap: 2px;
+                padding-bottom: 2px;
+            }
+            .nav-link { white-space: nowrap; padding: 8px 12px; font-size: 13px; }
+
+            /* Container + cards: tighter padding, allow wide content to scroll */
+            .container { padding: 14px 12px; }
+            .card { padding: 16px; overflow-x: auto; }
+            .card-header { margin-bottom: 14px; }
+
+            /* Panel tab strip: full width, horizontally scrollable, no wrapping */
+            .panel-tabs {
+                width: 100% !important;
+                max-width: 100%;
+                flex-wrap: nowrap !important;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .panel-tab { white-space: nowrap; padding: 8px 14px !important; flex: 0 0 auto; }
+
+            /* Smaller hero + stat numbers so they don't dominate the screen */
+            .hero-title { font-size: 26px; }
+            .stat-card { padding: 16px; }
+            .stat-value { font-size: 22px; }
+
+            /* Make primary action buttons full-width and easy to tap */
+            .btn-group { flex-wrap: wrap; }
+            .btn-group .btn { flex: 1 1 auto; justify-content: center; }
+
+            /* Tables scroll horizontally instead of overflowing the viewport */
+            .data-table { display: block; overflow-x: auto; white-space: nowrap; }
+
+            .toast-container { right: 12px; left: 12px; }
+            .toast { max-width: none; }
         }
 
         /* ── Section header ── */
@@ -922,7 +977,7 @@
                 <!-- Panel content (locked until password entered) -->
                 <div class="panel-content" id="panelContent">
                     <!-- Sub-navigation for panel sections -->
-                    <div style="display:flex;gap:4px;background:rgba(15,23,42,0.54);border-radius:999px;padding:5px;border:1px solid rgba(148,163,184,0.18);margin-bottom:24px;width:fit-content">
+                    <div class="panel-tabs" style="display:flex;gap:4px;background:rgba(15,23,42,0.54);border-radius:999px;padding:5px;border:1px solid rgba(148,163,184,0.18);margin-bottom:24px;width:fit-content">
                         <div class="panel-tab active" onclick="showPanelTab('panelDashboard', this)" style="padding:8px 20px;border-radius:999px;color:#03101f;background:var(--accent-gradient);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Dashboard</div>
                         <div class="panel-tab" onclick="showPanelTab('panelActivate', this)" style="padding:8px 20px;border-radius:999px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Activate</div>
                         <div class="panel-tab" onclick="showPanelTab('panelKeys', this)" style="padding:8px 20px;border-radius:999px;color:var(--text-secondary);cursor:pointer;font-size:13px;font-weight:600;transition:var(--transition);user-select:none">Keys</div>
