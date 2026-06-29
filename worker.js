@@ -35,6 +35,12 @@ const KEYS_WEBHOOK_PATH = '/webhook/keys';
 const STOCK_BOT_PREFIX = '/api/stock-bot/';
 const STOCK_BOT_CONFIG_KEY = 'config';
 
+// Reseller-facing stock-check API: GET /api/stock?api_key=<key>
+// Authenticated with RESELLER_API_KEYS (comma-separated) and returns the live
+// stock for every account type as JSON, with the display count capped (default 5).
+const RESELLER_STOCK_PATH = '/api/stock';
+const RESELLER_STOCK_DEFAULT_CAP = 5;
+
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -67,6 +73,11 @@ export default {
     // --- Stock Discord bot config/control API ---
     if (url.pathname.startsWith(STOCK_BOT_PREFIX)) {
       return handleStockBotApi(request, env, url);
+    }
+
+    // --- Reseller stock-check API (authenticated, returns all stock as JSON) ---
+    if (url.pathname === RESELLER_STOCK_PATH) {
+      return handleResellerStockApi(request, env, url);
     }
 
     // --- Panel auth endpoint: verify password server-side ---
@@ -1001,6 +1012,66 @@ async function handleStockBotApi(request, env, url) {
   }
 
   return jsonResponse({ status: 'error', message: 'Unknown stock-bot action' }, 404);
+}
+
+// Reseller stock-check API.
+//   GET /api/stock?api_key=<key>                 -> { status, cap, stock: {key: n, ...} }
+//   GET /api/stock?api_key=<key>&account_type=cs2_prime           -> single value
+//   GET /api/stock?api_key=<key>&account_type=cs2_prime&response_type=text -> "5"
+// Counts are capped (default 5) so we never expose exact inventory, matching the embeds.
+async function handleResellerStockApi(request, env, url) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders(null) });
+  }
+
+  const allowed = String(env.RESELLER_API_KEYS || env.RESELLER_API_KEY || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!allowed.length) {
+    return jsonResponse({
+      status: 'error',
+      message: 'Reseller stock API is not configured (set RESELLER_API_KEYS).',
+    }, 500);
+  }
+
+  const provided =
+    url.searchParams.get('api_key') ||
+    request.headers.get('X-API-Key') ||
+    (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!provided || !allowed.includes(provided)) {
+    return jsonResponse({ status: 'error', message: 'Invalid or missing api_key' }, 401);
+  }
+
+  let stock;
+  try {
+    stock = await fetchNfaStock(env);
+  } catch (err) {
+    return jsonResponse({ status: 'error', message: String((err && err.message) || err) }, 502);
+  }
+
+  const capParam = parseInt(url.searchParams.get('cap'), 10);
+  const cap = Number.isFinite(capParam) && capParam >= 0 ? capParam : RESELLER_STOCK_DEFAULT_CAP;
+
+  // Single account-type lookup (also supports the text response_type CV-style flow).
+  const single = url.searchParams.get('account_type') || url.searchParams.get('type');
+  if (single) {
+    const n = displayCount(lookupStock(stock, single), cap);
+    if ((url.searchParams.get('response_type') || '').toLowerCase() === 'text') {
+      return new Response(String(n), {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8', ...corsHeaders(null) },
+      });
+    }
+    return jsonResponse({ status: 'ok', cap, account_type: single, stock: n });
+  }
+
+  // Full dump: every account type the API tracks, capped.
+  const out = {};
+  for (const [k, v] of Object.entries(stock)) {
+    out[k] = displayCount(Number(v) || 0, cap);
+  }
+  return jsonResponse({ status: 'ok', cap, stock: out });
 }
 
 // Fetch the live stock map from the NFA API using the server-side key.
