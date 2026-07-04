@@ -2212,7 +2212,7 @@
                         const repKey = r.data.replacement_key;
                         toast(repKey ? ('Replaced — new key: ' + repKey) : 'Account REPLACED — check replacement_key', 'info');
                         if (repKey) copyToClipboard(repKey, btn);
-                        loadAllKeys();
+                        loadAllKeys(true);
                     } else if (result === 'valid') {
                         toast('Account still VALID — no replacement needed', 'success');
                     } else {
@@ -2338,7 +2338,7 @@
                         html += '</table>';
                         el.innerHTML = html;
                     }
-                    toast(`Loaded ${r.data.invoices.length} of ${r.data.total} invoices`, 'success');
+                    toast(`Loaded ${r.data.invoices.length} of ${r.data.total ?? r.data.invoices.length} invoices`, 'success');
                 } else {
                     toast((r.data && r.data.message) || 'Failed to load invoices', 'error');
                 }
