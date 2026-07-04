@@ -1043,11 +1043,54 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <div class="card-title"><span class="icon">📊</span> API Usage (This Minute)</div>
+                            <div class="card-title"><span class="icon">💰</span> Crypto Top-Up <span style="font-size:11px;font-weight:600;color:var(--text-muted)">(min $30)</span></div>
+                            <span class="card-badge badge-post">POST</span>
                         </div>
-                        <div id="usageTable">
-                            <p style="color:var(--text-muted);font-size:13px">Click refresh to load</p>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Top up your reseller balance with cryptocurrency. Create an invoice, pay it at the invoice URL, and your balance is credited automatically once payment confirms.</p>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Amount (USD, min 30)</label>
+                                <input type="number" class="form-input" id="cryptoAmount" min="30" step="1" placeholder="30">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Currency</label>
+                                <select class="form-select" id="cryptoCurrency">
+                                    <option value="">Load currencies first...</option>
+                                </select>
+                            </div>
                         </div>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" id="cryptoCurrenciesBtn" onclick="loadCryptoCurrencies()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">↻ Load Currencies</span>
+                            </button>
+                            <button class="btn btn-primary" id="cryptoInvoiceBtn" onclick="createCryptoInvoice()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Create Invoice</span>
+                            </button>
+                        </div>
+                        <div class="form-group" style="margin-top:16px">
+                            <label class="form-label">Check Invoice (txn_id)</label>
+                            <input type="text" class="form-input" id="cryptoTxnId" placeholder="Transaction ID from invoice">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" id="cryptoCheckBtn" onclick="checkCryptoInvoice()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Check Invoice</span>
+                            </button>
+                            <button class="btn btn-secondary" id="cryptoHistoryBtn" onclick="loadCryptoInvoices()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Invoice History</span>
+                            </button>
+                        </div>
+                        <div class="output" id="cryptoOutput">
+                            <div class="output-header">
+                                <span class="output-title">Result</span>
+                                <span class="output-status" id="cryptoStatus"></span>
+                            </div>
+                            <div class="output-body" id="cryptoBody"></div>
+                        </div>
+                        <div id="cryptoInvoicesTable" style="margin-top:12px"></div>
                     </div>
                 </div>
 
@@ -1213,7 +1256,7 @@
                                 <div class="card-title"><span class="icon">✅</span> Check / Replace <span style="font-size:11px;font-weight:600;color:var(--text-muted)">(3h warranty)</span></div>
                                 <span class="card-badge badge-post">POST</span>
                             </div>
-                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Re-validate an activated account. If it's invalid and still inside the 3‑hour warranty, it's auto‑replaced and a new replacement key is returned. Returns valid / replaced / invalid.</p>
+                            <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Re-validate an activated account. If a replacement is available it's auto‑replaced and a new replacement key is returned. Returns valid / replaced / invalid (invalid = manual support review).</p>
                             <div class="form-group">
                                 <label class="form-label">Activation Key</label>
                                 <input type="text" class="form-input" id="checkAccountKey" placeholder="Enter activation key">
@@ -1256,6 +1299,31 @@
                                 </div>
                                 <div class="output-body" id="createExeBody"></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 20px">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔎</span> Key Details</div>
+                            <span class="card-badge badge-get">GET</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Look up full details for an activated key. If the key was replaced, the replacement key is returned and can be looked up again.</p>
+                        <div class="form-group">
+                            <label class="form-label">Activation Key</label>
+                            <input type="text" class="form-input" id="keyDetailsKey" placeholder="Enter activation key">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="keyDetailsBtn" onclick="keyDetails()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">Get Details</span>
+                            </button>
+                        </div>
+                        <div class="output" id="keyDetailsOutput">
+                            <div class="output-header">
+                                <span class="output-title">Result</span>
+                                <span class="output-status" id="keyDetailsStatus"></span>
+                            </div>
+                            <div class="output-body" id="keyDetailsBody"></div>
                         </div>
                     </div>
 
@@ -1729,16 +1797,6 @@
                     twEl.textContent = d.technical_works ? 'YES' : 'No';
                     twEl.className = `stat-value ${d.technical_works ? 'warning' : 'positive'}`;
 
-                    if (d.usage) {
-                        let html = '<table class="data-table"><tr><th>Endpoint</th><th>Used</th><th>Limit</th></tr>';
-                        Object.entries(d.usage).forEach(([endpoint, info]) => {
-                            const used = typeof info === 'object' ? (info.used || info.count || 0) : info;
-                            const limit = typeof info === 'object' ? (info.limit || '—') : '—';
-                            html += `<tr><td>${endpoint}</td><td>${used}</td><td>${limit}</td></tr>`;
-                        });
-                        html += '</table>';
-                        document.getElementById('usageTable').innerHTML = html;
-                    }
                 }
 
                 if (accountsRes.ok && accountsRes.data.accounts) {
@@ -2132,7 +2190,7 @@
                         const repKey = r.data.replacement_key;
                         toast(repKey ? ('Replaced — new key: ' + repKey) : 'Account REPLACED — check replacement_key', 'info');
                     }
-                    else toast('Account INVALID — out of 3h warranty, contact support', 'error');
+                    else toast(r.data.message || 'Account is invalid — please contact support for manual review', 'error');
                 }
             } catch (err) {
                 toast('Error: ' + err.message, 'error');
@@ -2153,10 +2211,12 @@
                     if (result === 'replaced') {
                         const repKey = r.data.replacement_key;
                         toast(repKey ? ('Replaced — new key: ' + repKey) : 'Account REPLACED — check replacement_key', 'info');
+                        if (repKey) copyToClipboard(repKey, btn);
+                        loadAllKeys();
                     } else if (result === 'valid') {
                         toast('Account still VALID — no replacement needed', 'success');
                     } else {
-                        toast('Account INVALID — out of 3h warranty, contact support', 'error');
+                        toast((r.data && r.data.message) || 'Account is invalid — please contact support for manual review', 'error');
                     }
                 } else {
                     toast((r.data && r.data.message) || 'Failed to replace key', 'error');
@@ -2166,6 +2226,126 @@
             }
             btn.disabled = false;
             btn.textContent = original;
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  KEY DETAILS
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function keyDetails() {
+            const key = document.getElementById('keyDetailsKey').value.trim();
+            if (!key) return toast('Enter an activation key', 'error');
+
+            setLoading('keyDetailsBtn', true);
+            try {
+                const r = await apiGet('/api/v1/key_details', { activation_key: key }, 30000, { fresh: true });
+                showOutput('keyDetails', r.data, r.ok);
+
+                const act = (r.ok && r.data && r.data.activation) || null;
+                const repKey = act && (act.replacement_key || act.replaced_by);
+                if (repKey && repKey !== key) {
+                    document.getElementById('keyDetailsKey').value = repKey;
+                    toast('Key was replaced — replacement key loaded into the input: ' + repKey, 'info');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('keyDetailsBtn', false);
+        }
+
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //  CRYPTO TOP-UP
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        async function loadCryptoCurrencies() {
+            setLoading('cryptoCurrenciesBtn', true);
+            try {
+                const r = await apiGet('/api/v1/crypto/currencies', null, 30000, { fresh: true });
+                if (r.ok && Array.isArray(r.data.currencies)) {
+                    const sel = document.getElementById('cryptoCurrency');
+                    sel.innerHTML = '<option value="">Select currency...</option>';
+                    r.data.currencies.forEach(c => {
+                        const cid = c.cid || c.currency_cid || c.id;
+                        if (!cid) return;
+                        const opt = document.createElement('option');
+                        opt.value = cid;
+                        opt.textContent = c.name ? `${c.name} (${cid})` : cid;
+                        sel.appendChild(opt);
+                    });
+                    toast(`Loaded ${r.data.currencies.length} currencies`, 'success');
+                } else {
+                    toast((r.data && r.data.message) || 'Failed to load currencies', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('cryptoCurrenciesBtn', false);
+        }
+
+        async function createCryptoInvoice() {
+            const amount = parseFloat(document.getElementById('cryptoAmount').value);
+            const cid = document.getElementById('cryptoCurrency').value;
+            if (!amount || amount < 30) return toast('Minimum top-up is $30', 'error');
+            if (!cid) return toast('Select a currency (load currencies first)', 'error');
+
+            setLoading('cryptoInvoiceBtn', true);
+            try {
+                const r = await api('POST', '/api/v1/crypto/create_invoice', { amount_usd: amount, currency_cid: cid });
+                showOutput('crypto', r.data, r.ok);
+
+                if (r.ok) {
+                    if (r.data.txn_id) document.getElementById('cryptoTxnId').value = r.data.txn_id;
+                    if (r.data.invoice_url) {
+                        toast('Invoice created — opening payment page…', 'success');
+                        window.open(r.data.invoice_url, '_blank', 'noopener');
+                    } else {
+                        toast('Invoice created', 'success');
+                    }
+                } else {
+                    toast((r.data && r.data.message) || 'Failed to create invoice', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('cryptoInvoiceBtn', false);
+        }
+
+        async function checkCryptoInvoice() {
+            const txnId = document.getElementById('cryptoTxnId').value.trim();
+            if (!txnId) return toast('Enter a transaction ID', 'error');
+
+            setLoading('cryptoCheckBtn', true);
+            try {
+                const r = await apiGet('/api/v1/crypto/check_invoice', { txn_id: txnId }, 30000, { fresh: true });
+                showOutput('crypto', r.data, r.ok);
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('cryptoCheckBtn', false);
+        }
+
+        async function loadCryptoInvoices() {
+            setLoading('cryptoHistoryBtn', true);
+            try {
+                const r = await apiGet('/api/v1/crypto/invoices', { page: 1, limit: 20 }, 30000, { fresh: true });
+                if (r.ok && Array.isArray(r.data.invoices)) {
+                    const el = document.getElementById('cryptoInvoicesTable');
+                    if (!r.data.invoices.length) {
+                        el.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No invoices yet</p>';
+                    } else {
+                        let html = '<table class="data-table"><tr><th>Txn ID</th><th>Amount</th><th>Currency</th><th>Status</th><th>Date</th></tr>';
+                        r.data.invoices.forEach(inv => {
+                            html += `<tr><td>${escapeHtml(inv.txn_id ?? '—')}</td><td>${escapeHtml(inv.amount_usd != null ? '$' + inv.amount_usd : (inv.amount ?? '—'))}</td><td>${escapeHtml(inv.currency ?? inv.currency_cid ?? '—')}</td><td>${escapeHtml(inv.status ?? '—')}</td><td>${escapeHtml(inv.date ?? inv.created_at ?? '—')}</td></tr>`;
+                        });
+                        html += '</table>';
+                        el.innerHTML = html;
+                    }
+                    toast(`Loaded ${r.data.invoices.length} of ${r.data.total} invoices`, 'success');
+                } else {
+                    toast((r.data && r.data.message) || 'Failed to load invoices', 'error');
+                }
+            } catch (err) {
+                toast('Error: ' + err.message, 'error');
+            }
+            setLoading('cryptoHistoryBtn', false);
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
