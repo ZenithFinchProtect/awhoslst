@@ -44,6 +44,25 @@ function corsHeaders(origin) {
   };
 }
 
+// Stock-only maintenance mode: when env.NFA_STOCK_ONLY === '1', only the
+// stock endpoints may reach the NFA API. Delivery webhooks and the loader/
+// activation endpoints return 503 (delivery platforms retry later), and the
+// Discord stock-bot cron is paused. Used to bring services back one at a time
+// after an NFA rate-limit block without immediately tripping it again.
+function stockOnly(env) {
+  return env.NFA_STOCK_ONLY === '1';
+}
+
+function stockOnlyResponse(origin) {
+  return new Response(JSON.stringify({
+    status: 'error',
+    message: 'Temporarily unavailable: stock-only maintenance mode is enabled',
+  }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': '600', ...corsHeaders(origin) },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin');
@@ -51,16 +70,19 @@ export default {
 
     // --- SellAuth Dynamic Delivery webhook ---
     if (url.pathname === SELLAUTH_WEBHOOK_PATH) {
+      if (stockOnly(env)) return stockOnlyResponse(origin);
       return handleSellAuthWebhook(request, env);
     }
 
     // --- reselling.pro dynamic-delivery webhook (JSON body) ---
     if (url.pathname === RESELLING_WEBHOOK_PATH) {
+      if (stockOnly(env)) return stockOnlyResponse(origin);
       return handleResellingWebhook(request, env);
     }
 
     // --- Token-authenticated key delivery (query-string) ---
     if (url.pathname === KEYS_WEBHOOK_PATH) {
+      if (stockOnly(env)) return stockOnlyResponse(origin);
       return handleKeysWebhook(request, env, url);
     }
 
@@ -82,6 +104,7 @@ export default {
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: corsHeaders(origin) });
       }
+      if (stockOnly(env)) return stockOnlyResponse(origin);
       return handleLoaderEndpoint(request, env, origin);
     }
 
@@ -95,6 +118,11 @@ export default {
     // --- CORS preflight ---
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    // In stock-only mode, only the stock proxy path may reach the NFA API.
+    if (stockOnly(env) && url.pathname !== '/api/v1/stock') {
+      return stockOnlyResponse(origin);
     }
 
     // --- Build upstream request ---
@@ -152,6 +180,7 @@ export default {
   // Cron trigger — fires every minute (see wrangler.toml). Posts the stock
   // embed to Discord only when the configured interval has elapsed.
   async scheduled(event, env, ctx) {
+    if (stockOnly(env)) return;
     ctx.waitUntil(runStockBot(env, { force: false }));
   },
 };
