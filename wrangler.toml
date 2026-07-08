@@ -25,5 +25,12 @@ crons = ["* * * * *"]
 binding = "STOCK_BOT"
 id = "14234c4109ef4e23957f850f64e6880d"
 
+# Per-IP rate limiter for /api/ and /webhook/ paths (Workers Rate Limiting API).
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 10 }
+
 # Panel password — set via: wrangler secret put PANEL_PASSWORD
 # The worker falls back to a default if the secret is not set.
