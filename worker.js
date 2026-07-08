@@ -830,6 +830,7 @@ const DEFAULT_STOCK_CONFIG = {
     },
   ],
   lastSentAt: 0,
+  lastAttemptAt: 0,
 };
 
 function jsonResponse(body, status = 200) {
@@ -1003,9 +1004,18 @@ async function handleStockBotApi(request, env, url) {
   return jsonResponse({ status: 'error', message: 'Unknown stock-bot action' }, 404);
 }
 
+// Short-lived cache of the NFA stock map, so bursts of requests (panel
+// buttons, cron retries) don't each hit the NFA API and trip its rate limit.
+let _stockCache = { time: 0, stock: null };
+const STOCK_CACHE_TTL = 60 * 1000;
+
 // Fetch the live stock map from the NFA API using the server-side key.
 async function fetchNfaStock(env) {
   if (!env.NFA_API_KEY) throw new Error('NFA_API_KEY is not set');
+  const now = Date.now();
+  if (_stockCache.stock && now - _stockCache.time < STOCK_CACHE_TTL) {
+    return _stockCache.stock;
+  }
   const res = await fetch(`${NFA_ORIGIN}/api/v1/stock`, {
     method: 'GET',
     headers: {
@@ -1024,7 +1034,9 @@ async function fetchNfaStock(env) {
     const msg = (data && data.message) || text || `HTTP ${res.status}`;
     throw new Error('Failed to fetch stock: ' + msg);
   }
-  return (data && data.stock) || {};
+  const stock = (data && data.stock) || {};
+  _stockCache = { time: now, stock };
+  return stock;
 }
 
 // Resolve a stock count for a key, with exact then case-insensitive matching.
@@ -1084,6 +1096,9 @@ async function postToWebhook(config, url, embed) {
   }
 }
 
+// Minimum wait between scheduled send attempts after a failure.
+const RETRY_BACKOFF_MS = 5 * 60 * 1000;
+
 // Core runner. `force` bypasses the enabled flag and interval gate (used by
 // the panel's "Send test now" button).
 async function runStockBot(env, { force }) {
@@ -1106,6 +1121,14 @@ async function runStockBot(env, { force }) {
       if (elapsed < config.intervalMinutes * 60 * 1000) {
         return { sent: false, skipped: true, reason: 'interval-not-elapsed' };
       }
+      // Back off after a failed attempt instead of retrying every cron tick,
+      // so a broken webhook doesn't hammer the NFA API once per minute.
+      const sinceAttempt = Date.now() - (config.lastAttemptAt || 0);
+      if (sinceAttempt < RETRY_BACKOFF_MS) {
+        return { sent: false, skipped: true, reason: 'retry-backoff' };
+      }
+      config.lastAttemptAt = Date.now();
+      await saveStockConfig(env, config);
     }
 
     const stock = await fetchNfaStock(env);
