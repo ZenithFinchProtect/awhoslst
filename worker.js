@@ -125,6 +125,39 @@ export default {
       return stockOnlyResponse(origin);
     }
 
+    // Serve proxied stock requests from the short-lived cache so panel traffic
+    // doesn't hit the NFA API on every request.
+    if (request.method === 'GET' && url.pathname === '/api/v1/stock') {
+      try {
+        const stock = await fetchNfaStock(env);
+        return new Response(JSON.stringify({ status: 'success', stock }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ status: 'error', message: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+        });
+      }
+    }
+
+    // The generic proxy attaches the secret NFA key, so it must not be an open
+    // relay: anyone hammering it would look like us spamming the NFA API (and
+    // could mint keys). Key-holder endpoints stay public; everything else
+    // requires the panel password via X-Panel-Auth.
+    const PUBLIC_PROXY_PATHS = new Set(['/api/v1/activate', '/api/v1/create_exe']);
+    if (!PUBLIC_PROXY_PATHS.has(url.pathname)) {
+      const token = (request.headers.get('X-Panel-Auth') || '').trim();
+      const expected = env.PANEL_PASSWORD || 'NordicNFA2026';
+      if (token !== expected) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Invalid panel authentication' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+        });
+      }
+    }
+
     // --- Build upstream request ---
     const upstream = new URL(url.pathname + url.search, NFA_ORIGIN);
 
