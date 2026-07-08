@@ -57,6 +57,22 @@ function stockOnly(env) {
   return env.NFA_STOCK_ONLY === '1';
 }
 
+// Full pause: no NFA-bound traffic at all (stock included). Toggle with
+// `wrangler secret put NFA_PAUSED` ("1" = paused); takes effect immediately.
+function fullyPaused(env) {
+  return env.NFA_PAUSED === '1';
+}
+
+function pausedResponse(origin) {
+  return new Response(JSON.stringify({
+    status: 'error',
+    message: 'Temporarily unavailable: maintenance in progress',
+  }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': '600', ...corsHeaders(origin) },
+  });
+}
+
 function stockOnlyResponse(origin) {
   return new Response(JSON.stringify({
     status: 'error',
@@ -71,6 +87,13 @@ export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin');
     const url = new URL(request.url);
+
+    // Full pause: nothing may reach the NFA API (webhooks get 503 so the
+    // platforms retry later).
+    if (fullyPaused(env) && (url.pathname.startsWith('/api/v1/') || url.pathname.startsWith('/webhook/'))
+        && url.pathname !== '/api/v1/panel-auth') {
+      return pausedResponse(origin);
+    }
 
     // --- SellAuth Dynamic Delivery webhook ---
     if (url.pathname === SELLAUTH_WEBHOOK_PATH) {
@@ -235,7 +258,7 @@ export default {
   // Cron trigger — fires every minute (see wrangler.toml). Posts the stock
   // embed to Discord only when the configured interval has elapsed.
   async scheduled(event, env, ctx) {
-    if (stockOnly(env)) return;
+    if (fullyPaused(env) || stockOnly(env)) return;
     ctx.waitUntil(runStockBot(env, { force: false }));
   },
 };
