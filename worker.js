@@ -4,6 +4,25 @@
 
 const NFA_ORIGIN = 'https://nfa-api.acode.ing';
 
+// NFA blocks Cloudflare egress IPs, so when the relay is configured
+// (NFA_RELAY_URL + NFA_RELAY_SECRET secrets) all NFA calls go through it:
+// the relay runs on Railway (unblocked IP) and holds the NFA key.
+function useRelay(env) {
+  return Boolean(env.NFA_RELAY_URL && env.NFA_RELAY_SECRET);
+}
+
+function nfaUrl(env, pathAndQuery) {
+  return useRelay(env)
+    ? new URL(`/relay${pathAndQuery}`, env.NFA_RELAY_URL).toString()
+    : `${NFA_ORIGIN}${pathAndQuery}`;
+}
+
+function nfaAuthHeaders(env) {
+  return useRelay(env)
+    ? { 'X-Relay-Secret': env.NFA_RELAY_SECRET, 'Content-Type': 'application/json', Accept: 'application/json' }
+    : { 'X-API-Key': env.NFA_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' };
+}
+
 // Shown when a key is activated against a product that has no stock left.
 const RESTOCK_MESSAGE = 'SELECTED NFA OUT OF STOCK — USE SAME KEY WHEN AVAILABLE';
 
@@ -221,9 +240,9 @@ export default {
     }
 
     // --- Build upstream request ---
-    const upstream = new URL(url.pathname + url.search, NFA_ORIGIN);
+    const upstream = new URL(nfaUrl(env, url.pathname + url.search));
 
-    if (!env.NFA_API_KEY) {
+    if (!useRelay(env) && !env.NFA_API_KEY) {
       return new Response(JSON.stringify({ 
           status: 'error', 
           message: 'Server configuration error: NFA_API_KEY is not set in Cloudflare'
@@ -233,10 +252,7 @@ export default {
       });
     }
 
-    const headers = new Headers();
-    headers.set('X-API-Key', env.NFA_API_KEY);
-    headers.set('Content-Type', 'application/json');
-    headers.set('Accept', 'application/json');
+    const headers = new Headers(nfaAuthHeaders(env));
 
     const init = {
       method: request.method,
@@ -359,11 +375,7 @@ async function handleLoaderEndpoint(request, env, origin) {
     });
   }
 
-  const nfaHeaders = {
-    'X-API-Key': env.NFA_API_KEY,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
+  const nfaHeaders = nfaAuthHeaders(env);
 
   const jsonErr = (status, message) => new Response(
     JSON.stringify({ status: 'error', message }),
@@ -373,7 +385,7 @@ async function handleLoaderEndpoint(request, env, origin) {
   // Step 1: Try create_exe — fast path for already-activated keys.
   let exeData;
   try {
-    const res = await fetch(`${NFA_ORIGIN}/api/v1/create_exe`, {
+    const res = await fetch(nfaUrl(env, '/api/v1/create_exe'), {
       method: 'POST',
       headers: nfaHeaders,
       body: JSON.stringify({ activation_key: key }),
@@ -385,7 +397,7 @@ async function handleLoaderEndpoint(request, env, origin) {
       exeData = data;
     } else if (/activation not found/i.test(data.message || '')) {
       // Key not activated yet — activate it.
-      const actRes = await fetch(`${NFA_ORIGIN}/api/v1/activate`, {
+      const actRes = await fetch(nfaUrl(env, '/api/v1/activate'), {
         method: 'POST',
         headers: nfaHeaders,
         body: JSON.stringify({ activation_key: key }),
@@ -402,7 +414,7 @@ async function handleLoaderEndpoint(request, env, origin) {
         exeData = actData;
       } else {
         // Activation succeeded but no EXE — build it now.
-        const exeRes = await fetch(`${NFA_ORIGIN}/api/v1/create_exe`, {
+        const exeRes = await fetch(nfaUrl(env, '/api/v1/create_exe'), {
           method: 'POST',
           headers: nfaHeaders,
           body: JSON.stringify({ activation_key: key }),
@@ -488,8 +500,8 @@ async function getValidAccountTypes(env) {
     return _validTypesCache.types;
   }
   try {
-    const res = await fetch(`${NFA_ORIGIN}/api/v1/accounts`, {
-      headers: { 'X-API-Key': env.NFA_API_KEY, Accept: 'application/json' },
+    const res = await fetch(nfaUrl(env, '/api/v1/accounts'), {
+      headers: nfaAuthHeaders(env),
     });
     if (!res.ok) return _validTypesCache.types || [];
     const data = await res.json();
@@ -661,13 +673,9 @@ async function handleSellAuthWebhook(request, env) {
 async function deliverKeys(env, accountType, amount) {
   let nfaResponse;
   try {
-    nfaResponse = await fetch(`${NFA_ORIGIN}/api/v1/create_keys`, {
+    nfaResponse = await fetch(nfaUrl(env, '/api/v1/create_keys'), {
       method: 'POST',
-      headers: {
-        'X-API-Key': env.NFA_API_KEY,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: nfaAuthHeaders(env),
       body: JSON.stringify({ account_type: accountType, amount }),
     });
   } catch (err) {
