@@ -33,6 +33,10 @@ const KEYS_WEBHOOK_PATH = '/webhook/keys';
 
 // Stock Discord bot — config API + KV key.
 const STOCK_BOT_PREFIX = '/api/stock-bot/';
+
+// Cooldown between panel key generations (KV-backed).
+const CREATE_KEYS_COOLDOWN_KEY = 'create_keys_last';
+const CREATE_KEYS_COOLDOWN_MS = 3 * 60 * 1000;
 const STOCK_BOT_CONFIG_KEY = 'config';
 
 function corsHeaders(origin) {
@@ -156,6 +160,24 @@ export default {
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
         });
       }
+    }
+
+    // Key generation cooldown: at most one create_keys call every 3 minutes,
+    // tracked in KV so it holds across isolates.
+    if (url.pathname === '/api/v1/create_keys' && stockBotConfigured(env)) {
+      const last = Number(await env.STOCK_BOT.get(CREATE_KEYS_COOLDOWN_KEY)) || 0;
+      const elapsed = Date.now() - last;
+      if (elapsed < CREATE_KEYS_COOLDOWN_MS) {
+        const waitSec = Math.ceil((CREATE_KEYS_COOLDOWN_MS - elapsed) / 1000);
+        return new Response(JSON.stringify({
+          status: 'error',
+          message: `Key generation is on cooldown — try again in ${waitSec}s`,
+        }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': String(waitSec), ...corsHeaders(origin) },
+        });
+      }
+      await env.STOCK_BOT.put(CREATE_KEYS_COOLDOWN_KEY, String(Date.now()));
     }
 
     // --- Build upstream request ---
@@ -1071,17 +1093,19 @@ async function handleStockBotApi(request, env, url) {
 let _stockCache = { time: 0, stock: null };
 const STOCK_CACHE_TTL = 60 * 1000;
 
-// Fetch the live stock map from the NFA API using the server-side key.
+// All stock reads go through the cached stock site rather than the NFA API
+// directly, so the whole setup makes at most one stock call to NFA at a time.
+const STOCK_SOURCE = 'https://stock.nfaccount.com/api/v1/stock';
+
+// Fetch the live stock map from the cached stock site.
 async function fetchNfaStock(env) {
-  if (!env.NFA_API_KEY) throw new Error('NFA_API_KEY is not set');
   const now = Date.now();
   if (_stockCache.stock && now - _stockCache.time < STOCK_CACHE_TTL) {
     return _stockCache.stock;
   }
-  const res = await fetch(`${NFA_ORIGIN}/api/v1/stock`, {
+  const res = await fetch(STOCK_SOURCE, {
     method: 'GET',
     headers: {
-      'X-API-Key': env.NFA_API_KEY,
       Accept: 'application/json',
     },
   });
