@@ -72,6 +72,23 @@ export default {
     const origin = request.headers.get('Origin');
     const url = new URL(request.url);
 
+    // Per-IP rate limit on API/webhook paths so they can't be spammed into
+    // tripping NFA's rate limit (static assets are exempt).
+    if ((url.pathname.startsWith('/api/') || url.pathname.startsWith('/webhook/')) && env.RATE_LIMITER) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      try {
+        const { success } = await env.RATE_LIMITER.limit({ key: ip });
+        if (!success) {
+          return new Response(JSON.stringify({ status: 'error', message: 'Too many requests — slow down' }), {
+            status: 429,
+            headers: { 'Content-Type': 'application/json', 'Retry-After': '10', ...corsHeaders(origin) },
+          });
+        }
+      } catch {
+        // Rate limiter unavailable — fail open.
+      }
+    }
+
     // --- SellAuth Dynamic Delivery webhook ---
     if (url.pathname === SELLAUTH_WEBHOOK_PATH) {
       if (stockOnly(env)) return stockOnlyResponse(origin);
