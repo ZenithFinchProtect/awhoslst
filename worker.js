@@ -11,16 +11,24 @@ function useRelay(env) {
   return Boolean(env.NFA_RELAY_URL && env.NFA_RELAY_SECRET);
 }
 
+// The relay proxies /api/v1/* verbatim (no extra prefix), authenticates with
+// `Authorization: Bearer <RELAY_TOKEN>`, and injects the NFA key itself.
+// See ZenithFinchProtect/nfa-relay.
 function nfaUrl(env, pathAndQuery) {
   return useRelay(env)
-    ? new URL(`/relay${pathAndQuery}`, env.NFA_RELAY_URL).toString()
+    ? new URL(pathAndQuery, env.NFA_RELAY_URL).toString()
     : `${NFA_ORIGIN}${pathAndQuery}`;
 }
 
 function nfaAuthHeaders(env) {
   return useRelay(env)
-    ? { 'X-Relay-Secret': env.NFA_RELAY_SECRET, 'Content-Type': 'application/json', Accept: 'application/json' }
+    ? { Authorization: `Bearer ${env.NFA_RELAY_SECRET}`, 'Content-Type': 'application/json', Accept: 'application/json' }
     : { 'X-API-Key': env.NFA_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' };
+}
+
+// True when the worker can reach the NFA API at all (via relay or direct key).
+function nfaConfigured(env) {
+  return useRelay(env) || Boolean(env.NFA_API_KEY);
 }
 
 // Shown when a key is activated against a product that has no stock left.
@@ -350,7 +358,7 @@ async function handleLoaderEndpoint(request, env, origin) {
     });
   }
 
-  if (!env.NFA_API_KEY) {
+  if (!nfaConfigured(env)) {
     return new Response(JSON.stringify({ status: 'error', message: 'Server configuration error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
@@ -645,7 +653,7 @@ async function handleSellAuthWebhook(request, env) {
     }
   }
 
-  if (!env.NFA_API_KEY) {
+  if (!nfaConfigured(env)) {
     // Retryable: server is misconfigured, don't fail the customer's item yet.
     return plain(500, 'Server configuration error: NFA_API_KEY is not set');
   }
@@ -772,7 +780,7 @@ async function handleKeysWebhook(request, env, url) {
   if (!token || !timingSafeEqual(token, env.KEYS_WEBHOOK_TOKEN)) {
     return plain(401, 'Invalid token');
   }
-  if (!env.NFA_API_KEY) {
+  if (!nfaConfigured(env)) {
     return plain(500, 'Server configuration error: NFA_API_KEY is not set');
   }
 
@@ -818,7 +826,7 @@ async function handleResellingWebhook(request, env) {
     }
   }
 
-  if (!env.NFA_API_KEY) {
+  if (!nfaConfigured(env)) {
     return plain(500, 'Server configuration error: NFA_API_KEY is not set');
   }
 
