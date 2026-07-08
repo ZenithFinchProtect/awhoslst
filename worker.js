@@ -125,6 +125,23 @@ export default {
       return stockOnlyResponse(origin);
     }
 
+    // Serve proxied stock requests from the short-lived cache so panel traffic
+    // doesn't hit the NFA API on every request.
+    if (request.method === 'GET' && url.pathname === '/api/v1/stock') {
+      try {
+        const stock = await fetchNfaStock(env);
+        return new Response(JSON.stringify({ status: 'success', stock }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ status: 'error', message: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+        });
+      }
+    }
+
     // --- Build upstream request ---
     const upstream = new URL(url.pathname + url.search, NFA_ORIGIN);
 
