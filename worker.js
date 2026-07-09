@@ -98,6 +98,36 @@ async function recordDownload(env, ip) {
   }
 }
 
+// Ceilings on NFA-bound traffic so spam can't trip the NFA API's own rate
+// limit against our key: a strict per-IP cap (public endpoints only) plus a
+// global cap across all visitors. Returns a 429 Response or null to proceed.
+async function nfaTrafficLimit(env, request, origin, { skipIpLimit = false } = {}) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  try {
+    if (!skipIpLimit && env.NFA_IP_LIMITER) {
+      const { success } = await env.NFA_IP_LIMITER.limit({ key: ip });
+      if (!success) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Too many requests — slow down' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...corsHeaders(origin) },
+        });
+      }
+    }
+    if (env.NFA_GLOBAL_LIMITER) {
+      const { success } = await env.NFA_GLOBAL_LIMITER.limit({ key: 'global' });
+      if (!success) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Service is busy — try again in a minute' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...corsHeaders(origin) },
+        });
+      }
+    }
+  } catch {
+    // Rate limiter unavailable — fail open.
+  }
+  return null;
+}
+
 function downloadCooldownResponse(origin, waitSec) {
   return new Response(JSON.stringify({
     status: 'error',
@@ -218,6 +248,8 @@ export default {
         return new Response(null, { status: 204, headers: corsHeaders(origin) });
       }
       if (stockOnly(env)) return stockOnlyResponse(origin);
+      const limited = await nfaTrafficLimit(env, request, origin);
+      if (limited) return limited;
       return handleLoaderEndpoint(request, env, origin);
     }
 
@@ -293,6 +325,12 @@ export default {
       }
       await env.STOCK_BOT.put(CREATE_KEYS_COOLDOWN_KEY, String(Date.now()));
     }
+
+    // Only requests that will actually reach the NFA API get here (cached
+    // stock is served above). Panel-authenticated traffic skips the per-IP
+    // cap but still counts against the global one.
+    const limited = await nfaTrafficLimit(env, request, origin, { skipIpLimit: panelAuthed });
+    if (limited) return limited;
 
     // --- Build upstream request ---
     const upstream = new URL(nfaUrl(env, url.pathname + url.search));
