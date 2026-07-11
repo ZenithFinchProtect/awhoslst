@@ -66,6 +66,78 @@ const CREATE_KEYS_COOLDOWN_KEY = 'create_keys_last';
 const CREATE_KEYS_COOLDOWN_MS = 3 * 60 * 1000;
 const STOCK_BOT_CONFIG_KEY = 'config';
 
+// Public loader downloads: one per IP every 2 minutes (KV-backed so it holds
+// across isolates). The cooldown starts only after a successful EXE build, so
+// failed attempts and the activate step for fresh keys aren't penalized.
+const DOWNLOAD_COOLDOWN_PREFIX = 'loader_cd:';
+const DOWNLOAD_COOLDOWN_MS = 2 * 60 * 1000;
+
+// Seconds left on the download cooldown for this IP (0 = no cooldown).
+async function downloadCooldownRemaining(env, ip) {
+  if (!env.STOCK_BOT) return 0;
+  try {
+    const last = Number(await env.STOCK_BOT.get(DOWNLOAD_COOLDOWN_PREFIX + ip)) || 0;
+    const elapsed = Date.now() - last;
+    if (last && elapsed < DOWNLOAD_COOLDOWN_MS) {
+      return Math.ceil((DOWNLOAD_COOLDOWN_MS - elapsed) / 1000);
+    }
+  } catch {
+    // KV unavailable — fail open.
+  }
+  return 0;
+}
+
+async function recordDownload(env, ip) {
+  if (!env.STOCK_BOT) return;
+  try {
+    await env.STOCK_BOT.put(DOWNLOAD_COOLDOWN_PREFIX + ip, String(Date.now()), {
+      expirationTtl: Math.ceil(DOWNLOAD_COOLDOWN_MS / 1000),
+    });
+  } catch {
+    // KV unavailable — skip recording.
+  }
+}
+
+// Ceilings on NFA-bound traffic so spam can't trip the NFA API's own rate
+// limit against our key: a strict per-IP cap (public endpoints only) plus a
+// global cap across all visitors. Returns a 429 Response or null to proceed.
+async function nfaTrafficLimit(env, request, origin, { skipIpLimit = false } = {}) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  try {
+    if (!skipIpLimit && env.NFA_IP_LIMITER) {
+      const { success } = await env.NFA_IP_LIMITER.limit({ key: ip });
+      if (!success) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Too many requests — slow down' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...corsHeaders(origin) },
+        });
+      }
+    }
+    if (env.NFA_GLOBAL_LIMITER) {
+      const { success } = await env.NFA_GLOBAL_LIMITER.limit({ key: 'global' });
+      if (!success) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Service is busy — try again in a minute' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...corsHeaders(origin) },
+        });
+      }
+    }
+  } catch {
+    // Rate limiter unavailable — fail open.
+  }
+  return null;
+}
+
+function downloadCooldownResponse(origin, waitSec) {
+  return new Response(JSON.stringify({
+    status: 'error',
+    message: `Download cooldown — try again in ${waitSec}s`,
+  }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': String(waitSec), ...corsHeaders(origin) },
+  });
+}
+
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -176,6 +248,8 @@ export default {
         return new Response(null, { status: 204, headers: corsHeaders(origin) });
       }
       if (stockOnly(env)) return stockOnlyResponse(origin);
+      const limited = await nfaTrafficLimit(env, request, origin);
+      if (limited) return limited;
       return handleLoaderEndpoint(request, env, origin);
     }
 
@@ -218,15 +292,20 @@ export default {
     // could mint keys). Key-holder endpoints stay public; everything else
     // requires the panel password via X-Panel-Auth.
     const PUBLIC_PROXY_PATHS = new Set(['/api/v1/activate', '/api/v1/create_exe']);
-    if (!PUBLIC_PROXY_PATHS.has(url.pathname)) {
-      const token = (request.headers.get('X-Panel-Auth') || '').trim();
-      const expected = env.PANEL_PASSWORD || 'NordicNFA2026';
-      if (token !== expected) {
-        return new Response(JSON.stringify({ status: 'error', message: 'Invalid panel authentication' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
-        });
-      }
+    const panelAuthed = (request.headers.get('X-Panel-Auth') || '').trim() === (env.PANEL_PASSWORD || 'NordicNFA2026');
+    if (!PUBLIC_PROXY_PATHS.has(url.pathname) && !panelAuthed) {
+      return new Response(JSON.stringify({ status: 'error', message: 'Invalid panel authentication' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+      });
+    }
+
+    // Public download cooldown (panel-authenticated requests are exempt).
+    const isDownloadRequest = request.method === 'POST' && url.pathname === '/api/v1/create_exe' && !panelAuthed;
+    const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (isDownloadRequest) {
+      const waitSec = await downloadCooldownRemaining(env, clientIp);
+      if (waitSec) return downloadCooldownResponse(origin, waitSec);
     }
 
     // Key generation cooldown: at most one create_keys call every 3 minutes,
@@ -246,6 +325,12 @@ export default {
       }
       await env.STOCK_BOT.put(CREATE_KEYS_COOLDOWN_KEY, String(Date.now()));
     }
+
+    // Only requests that will actually reach the NFA API get here (cached
+    // stock is served above). Panel-authenticated traffic skips the per-IP
+    // cap but still counts against the global one.
+    const limited = await nfaTrafficLimit(env, request, origin, { skipIpLimit: panelAuthed });
+    if (limited) return limited;
 
     // --- Build upstream request ---
     const upstream = new URL(nfaUrl(env, url.pathname + url.search));
@@ -281,6 +366,22 @@ export default {
       const cors = corsHeaders(origin);
       for (const [k, v] of Object.entries(cors)) {
         responseHeaders.set(k, v);
+      }
+
+      if (isDownloadRequest) {
+        const body = await response.text();
+        let built = false;
+        try {
+          built = response.ok && Boolean(JSON.parse(body).exe_base64);
+        } catch {
+          built = false;
+        }
+        if (built) await recordDownload(env, clientIp);
+        return new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+        });
       }
 
       return new Response(response.body, {
@@ -383,6 +484,10 @@ async function handleLoaderEndpoint(request, env, origin) {
     });
   }
 
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const waitSec = await downloadCooldownRemaining(env, clientIp);
+  if (waitSec) return downloadCooldownResponse(origin, waitSec);
+
   const nfaHeaders = nfaAuthHeaders(env);
 
   const jsonErr = (status, message) => new Response(
@@ -444,6 +549,8 @@ async function handleLoaderEndpoint(request, env, origin) {
   } catch (err) {
     return jsonErr(502, 'Upstream request failed: ' + err.message);
   }
+
+  await recordDownload(env, clientIp);
 
   // Decode base64 → binary and stream as a file download.
   const binary = Uint8Array.from(atob(exeData.exe_base64), c => c.charCodeAt(0));
