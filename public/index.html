@@ -1601,7 +1601,15 @@
                     sessionStorage.setItem('nfa_panel_auth', input.value);
                     loadDashboard();
                     populateDropdowns();
+                } else if (res.status === 429) {
+                    err.textContent = 'Too many attempts. Locked out for 15 minutes.';
+                    err.style.display = 'block';
+                    input.disabled = true;
+                    btn.disabled = true;
+                    btn.textContent = 'Locked';
+                    return false;
                 } else {
+                    err.textContent = 'Incorrect password';
                     err.style.display = 'block';
                     input.value = '';
                     input.focus();
