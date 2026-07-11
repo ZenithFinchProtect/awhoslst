@@ -1,0 +1,115 @@
+{#
+  NFA Account Stock — SellAuth status page snippet
+  ------------------------------------------------------------------
+  Renders a live "NFA Account Stock" group on your status page, styled
+  to match your existing status-card layout. Stock is pulled client-side
+  from the public NFA stock API (no auth, CORS-open):
+
+      GET https://nordicnfas.com/api/sellauth/stock
+        -> { "stock": { "cs2_prime": 5, "rust_0_250_hours": 0, ... } }
+
+  HOW TO USE
+  ------------------------------------------------------------------
+  Option A (snippet): save this file as a snippet named "nfa-stock.njk",
+  then in your status-page.njk add this line where you want it to appear
+  (e.g. just after the opening <div class="status-cards"> or below it):
+
+      {% render_snippet "nfa-stock.njk" %}
+
+  Option B (inline): paste the markup + script block below directly into
+  your status page template.
+
+  CONFIG: edit the values in the <script> data-* attributes below.
+#}
+
+<div class="status-group nfa-stock-group">
+  <h2>NFA Account Stock</h2>
+  <div
+    class="status-cards"
+    id="nfa-stock-cards"
+    data-api="https://nordicnfas.com/api/sellauth/stock"
+    data-refresh="60"
+    data-hide-empty="false"
+    data-color-in="#22c55e"
+    data-color-out="#ef4444"
+  >
+    <p class="nfa-stock-state">Loading live stock…</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.getElementById('nfa-stock-cards');
+  if (!root || root.dataset.nfaInit) return;
+  root.dataset.nfaInit = '1';
+
+  var API        = root.dataset.api || 'https://nordicnfas.com/api/sellauth/stock';
+  var REFRESH    = parseInt(root.dataset.refresh || '0', 10);   // seconds, 0 = off
+  var HIDE_EMPTY = (root.dataset.hideEmpty || 'false') === 'true';
+  var COLOR_IN   = root.dataset.colorIn  || '#22c55e';
+  var COLOR_OUT  = root.dataset.colorOut || '#ef4444';
+
+  // Turn "rust_0_250_hours" into "Rust 0-250 Hours".
+  function prettify(key) {
+    return String(key)
+      .replace(/_/g, ' ')
+      .replace(/\b\d+ \d+\b/g, function (m) { return m.replace(' ', '-'); })
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function cardHtml(name, count) {
+    var inStock = count > 0;
+    var color   = inStock ? COLOR_IN : COLOR_OUT;
+    var label   = inStock ? ('In Stock · ' + count) : 'Out of Stock';
+    return ''
+      + '<div class="status-card">'
+      +   '<h3>' + esc(name) + '</h3>'
+      +   '<div class="status" data-color="' + color + '" data-label="' + esc(label) + '">'
+      +     '<div class="indicator" style="background-color: ' + color + '">'
+      +       '<div class="pulsating" style="background-color: ' + color + '"></div>'
+      +     '</div>'
+      +     '<span class="label" style="color: ' + color + '">' + esc(label) + '</span>'
+      +   '</div>'
+      + '</div>';
+  }
+
+  function render(stock) {
+    var keys = Object.keys(stock).sort(function (a, b) {
+      return prettify(a).localeCompare(prettify(b));
+    });
+    var html = '';
+    keys.forEach(function (key) {
+      var count = Number(stock[key]) || 0;
+      if (HIDE_EMPTY && count <= 0) return;
+      html += cardHtml(prettify(key), count);
+    });
+    root.innerHTML = html || '<p class="nfa-stock-state">No products available.</p>';
+  }
+
+  function load() {
+    fetch(API, { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var stock = (data && data.stock) || {};
+        render(stock);
+      })
+      .catch(function () {
+        root.innerHTML = '<p class="nfa-stock-state nfa-stock-error">Stock temporarily unavailable.</p>';
+      });
+  }
+
+  load();
+  if (REFRESH > 0) setInterval(load, REFRESH * 1000);
+})();
+</script>
+
+<style>
+  .nfa-stock-group .nfa-stock-state { opacity: .7; padding: .5rem 0; }
+  .nfa-stock-group .nfa-stock-error { color: #ef4444; }
+</style>
