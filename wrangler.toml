@@ -33,4 +33,4 @@ namespace_id = "1001"
 simple = { limit = 20, period = 10 }
 
 # Panel password — set via: wrangler secret put PANEL_PASSWORD
-# The worker falls back to a default if the secret is not set.
+# Required: password-gated endpoints return 500 until it is set (no default).

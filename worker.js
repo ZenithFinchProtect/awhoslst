@@ -220,8 +220,14 @@ export default {
     const PUBLIC_PROXY_PATHS = new Set(['/api/v1/activate', '/api/v1/create_exe']);
     if (!PUBLIC_PROXY_PATHS.has(url.pathname)) {
       const token = (request.headers.get('X-Panel-Auth') || '').trim();
-      const expected = env.PANEL_PASSWORD || 'NordicNFA2026';
-      if (token !== expected) {
+      const expected = env.PANEL_PASSWORD || '';
+      if (!expected) {
+        return new Response(JSON.stringify({ status: 'error', message: 'Server configuration error: PANEL_PASSWORD is not set' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+        });
+      }
+      if (!token || !timingSafeEqual(token, expected)) {
         return new Response(JSON.stringify({ status: 'error', message: 'Invalid panel authentication' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
@@ -331,9 +337,16 @@ async function handlePanelAuth(request, env, origin) {
   }
 
   const password = (body.password || '').trim();
-  const expected = (env.PANEL_PASSWORD || 'NordicNFA2026');
+  const expected = env.PANEL_PASSWORD || '';
 
-  if (!password || password !== expected) {
+  if (!expected) {
+    return new Response(JSON.stringify({ ok: false, error: 'Server configuration error: PANEL_PASSWORD is not set' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  if (!password || !timingSafeEqual(password, expected)) {
     return new Response(JSON.stringify({ ok: false, error: 'Incorrect password' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
